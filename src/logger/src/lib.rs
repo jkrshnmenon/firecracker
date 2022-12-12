@@ -44,6 +44,11 @@ pub fn log_dev_preview_warning(feature_name: &str, msg_opt: Option<String>) {
     }
 }
 
+/// FUCK YOU
+pub fn log_jaeger_warning(caller: &str, msg: &str) {
+    warn!("{}: {}", caller, msg)
+}
+
 fn extract_guard<G>(lock_result: LockResult<G>) -> G {
     match lock_result {
         Ok(guard) => guard,
