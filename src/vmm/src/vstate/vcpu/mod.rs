@@ -16,7 +16,7 @@ use std::{fmt, io, result, thread};
 use kvm_bindings::{KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN};
 use kvm_ioctls::VcpuExit;
 use libc::{c_int, c_void, siginfo_t};
-use logger::{error, info, IncMetric, METRICS};
+use logger::{error, info, IncMetric, METRICS, log_jaeger_warning};
 use seccompiler::{BpfProgram, BpfProgramRef};
 use utils::errno;
 use utils::eventfd::EventFd;
@@ -509,6 +509,13 @@ impl Vcpu {
                         )))
                     }
                 },
+                VcpuExit::Debug(arch) => {
+                    log_jaeger_warning(
+                        "run_emulation",
+                        format!("[vcpu{}] pc => {:#018x}", self.kvm_vcpu.index, arch.pc).as_str()
+                    );
+                    Ok(VcpuEmulation::Handled)
+                }
                 arch_specific_reason => {
                     // run specific architecture emulation.
                     self.kvm_vcpu.run_arch_emulation(arch_specific_reason)
