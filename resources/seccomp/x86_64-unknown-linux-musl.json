@@ -1172,6 +1172,18 @@
                         "comment": "KVM_GET_TSC_KHZ"
                     }
                 ]
+            },
+            {
+                "syscall": "ioctl",
+                "args": [
+                    {
+                        "index": 1,
+                        "type": "dword",
+                        "op": "eq",
+                        "val": 1078505115,
+                        "comment": "KVM_SET_GUEST_DEBUG"
+                    }
+                ]
             }
         ]
     }
