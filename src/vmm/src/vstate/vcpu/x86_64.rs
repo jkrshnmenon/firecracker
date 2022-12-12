@@ -14,7 +14,7 @@ use arch::x86_64::msr::SetMSRsError;
 use arch::x86_64::regs::{SetupFpuError, SetupRegistersError, SetupSpecialRegistersError};
 use kvm_bindings::{
     kvm_debugregs, kvm_lapic_state, kvm_mp_state, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs,
-    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES,
+    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES, kvm_guest_debug, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP
 };
 use kvm_ioctls::{VcpuExit, VcpuFd};
 use logger::{error, warn, IncMetric, METRICS};
@@ -336,6 +336,16 @@ impl KvmVcpu {
     /// Sets a Port Mapped IO bus for this vcpu.
     pub fn set_pio_bus(&mut self, pio_bus: devices::Bus) {
         self.pio_bus = Some(pio_bus);
+    }
+
+    /// Set the guest debug mode
+    pub fn set_guest_singlestep(&mut self) {
+        let debug_struct = kvm_guest_debug {
+            control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP,
+            pad: 0,
+            arch: Default::default()
+        };
+        self.fd.set_guest_debug(&debug_struct).unwrap();
     }
 
     /// Get the current TSC frequency for this vCPU.
