@@ -8,6 +8,7 @@ import pytest
 import framework.utils_cpuid as cpuid_utils
 from framework.properties import global_props
 from framework.utils_cpu_templates import SUPPORTED_CPU_TEMPLATES
+import host_tools.network as net_tools
 
 pytestmark = pytest.mark.skipif(
     global_props.cpu_architecture != "x86_64", reason="x86_64 specific tests"

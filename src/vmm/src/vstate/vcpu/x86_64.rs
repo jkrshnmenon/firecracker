@@ -338,6 +338,10 @@ impl KvmVcpu {
             }
             _ => (),
         }
+        if vcpu_config.cpu_template == CpuFeaturesTemplate::T2CL {
+            self.msr_list.extend(t2cl::msr_entries_to_save());
+            t2cl::update_msr_entries(&mut msr_boot_entries);
+        }
         // By this point we know that at snapshot, the list of MSRs we need to
         // save is `architectural MSRs` + `MSRs inferred through CPUID` + `other
         // MSRs defined by the template`
