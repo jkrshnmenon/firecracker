@@ -510,10 +510,18 @@ impl Vcpu {
                     }
                 },
                 VcpuExit::Debug(arch) => {
+                    let sregs = self.kvm_vcpu.fd.get_sregs().unwrap();
                     log_jaeger_warning(
                         "run_emulation",
-                        format!("[vcpu{}] pc => {:#018x}", self.kvm_vcpu.index, arch.pc).as_str()
+                        format!(
+                            "[vcpu{}] pc = {:#018x} | cr3 = {:#018x}",
+                            self.kvm_vcpu.index,
+                            arch.pc,
+                            sregs.cr3,
+                        )
+                        .as_str()
                     );
+                    self.kvm_vcpu.set_guest_singlestep();
                     Ok(VcpuEmulation::Handled)
                 }
                 arch_specific_reason => {
