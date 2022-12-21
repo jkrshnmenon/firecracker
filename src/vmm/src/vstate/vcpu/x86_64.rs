@@ -15,7 +15,8 @@ use arch::x86_64::regs::{SetupFpuError, SetupRegistersError, SetupSpecialRegiste
 use cpuid::{c3, filter_cpuid, msrs_to_save_by_cpuid, t2, t2s, VmSpec};
 use kvm_bindings::{
     kvm_debugregs, kvm_lapic_state, kvm_mp_state, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs,
-    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES, kvm_guest_debug, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP
+    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES, kvm_guest_debug, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP,
+    kvm_guest_debug_arch
 };
 use kvm_ioctls::{VcpuExit, VcpuFd};
 use logger::{error, warn, IncMetric, METRICS};
@@ -328,13 +329,29 @@ impl KvmVcpu {
     }
 
     /// Set the guest debug mode
-    pub fn set_guest_singlestep(&mut self) {
+    pub fn set_guest_singlestep(&self) {
+        let KVM_GUESTDBG_BLOCKIRQ = 0x100000;
         let debug_struct = kvm_guest_debug {
-            control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP,
+            control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP | KVM_GUESTDBG_BLOCKIRQ,
+            //control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP,
             pad: 0,
-            arch: Default::default()
+            arch: kvm_guest_debug_arch {
+                debugreg: [0, 0, 0, 0, 0, 0, 0, 0x00000400],
+                //debugreg: [0, 0, 0, 0, 0, 0, 0, 0],
+            },
         };
-        self.fd.set_guest_debug(&debug_struct).unwrap();
+        // self.fd.set_guest_debug(&debug_struct).unwrap();
+    }
+
+
+    /// Translate a virtual address to physical address in the guest
+    pub fn guest_virt_to_phys(&self, address: u64) -> u64 {
+        let translation = self.fd.translate_gva(address).unwrap();
+        let mut ret = 0;
+        if translation.valid == 1 {
+            ret = translation.physical_address;
+        }
+        ret
     }
 
     /// Get the current TSC frequency for this vCPU.
