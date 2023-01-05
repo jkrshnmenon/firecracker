@@ -1196,6 +1196,81 @@
                         "comment": "KVM_TRANSLATE"
                     }
                 ]
+            },
+            {
+                "syscall": "ioctl",
+                "args": [
+                    {
+                        "index": 1,
+                        "type": "dword",
+                        "op": "eq",
+                        "val": 44752,
+                        "comment": "KVM_VMX_PT_SETUP_FD"
+                    }
+                ]
+            },
+            {
+                "syscall": "ioctl",
+                "args": [
+                    {
+                        "index": 1,
+                        "type": "dword",
+                        "op": "eq",
+                        "val": 2147790551,
+                        "comment": "KVM_VMX_PT_GET_TOPA_SIZE"
+                    }
+                ]
+            },
+            {
+                "syscall": "ioctl",
+                "args": [
+                    {
+                        "index": 1,
+                        "type": "dword",
+                        "op": "eq",
+                        "val": 1074310865,
+                        "comment": "KVM_VMX_PT_CONFIGURE_ADDR0"
+                    }
+                ]
+            },
+            {
+                "syscall": "ioctl",
+                "args": [
+                    {
+                        "index": 1,
+                        "type": "dword",
+                        "op": "eq",
+                        "val": 44714,
+                        "comment": "KVM_VMX_PT_ENABLE_ADDR0"
+                    }
+                ]
+            },
+            {
+                "syscall": "ioctl",
+                "args": [
+                    {
+                        "index": 1,
+                        "type": "dword",
+                        "op": "eq",
+                        "val": 44758,
+                        "comment": "KVM_VMX_PT_ENABLE"
+                    }
+                ]
+            },
+            {
+                "syscall": "ioctl",
+                "args": [
+                    {
+                        "index": 1,
+                        "type": "dword",
+                        "op": "eq",
+                        "val": 44761,
+                        "comment": "KVM_VMX_PT_CHECK_TOPA_OVERFLOW"
+                    }
+                ]
+            },
+            {
+                "syscall": "fcntl"
             }
         ]
     }
