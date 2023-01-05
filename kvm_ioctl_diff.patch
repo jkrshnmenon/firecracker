@@ -1,0 +1,131 @@
+diff --git a/src/ioctls/vcpu.rs b/src/ioctls/vcpu.rs
+index 16edefc..93dab0a 100644
+--- a/src/ioctls/vcpu.rs
++++ b/src/ioctls/vcpu.rs
+@@ -8,7 +8,8 @@
+ use kvm_bindings::*;
+ use libc::EINVAL;
+ use std::fs::File;
+-use std::os::unix::io::{AsRawFd, RawFd};
++use std::slice::from_raw_parts;
++use std::os::unix::io::{AsRawFd, RawFd, FromRawFd};
+ 
+ use crate::ioctls::{KvmRunWrapper, Result};
+ use crate::kvm_ioctls::*;
+@@ -19,6 +20,9 @@ use vmm_sys_util::ioctl::{ioctl, ioctl_with_mut_ref, ioctl_with_ref};
+ #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+ use vmm_sys_util::ioctl::{ioctl_with_mut_ptr, ioctl_with_ptr, ioctl_with_val};
+ 
++/// KAFL stuff
++pub const KVM_EXIT_KAFL_TOPA_MAIN_FULL: u32 = 119;
++
+ /// Reasons for vCPU exits.
+ ///
+ /// The exit reasons are mapped to the `KVM_EXIT_*` defines in the
+@@ -49,6 +53,8 @@ pub enum VcpuExit<'a> {
+     ///
+     /// Provides architecture specific information for the debug event.
+     Debug(kvm_debug_exit_arch),
++    /// Corresponds to KVM_EXIT_KAFL_TOPA_MAIN_FULL 
++    KaflTOPAMainFull,
+     /// Corresponds to KVM_EXIT_HLT.
+     Hlt,
+     /// Corresponds to KVM_EXIT_IRQ_WINDOW_OPEN.
+@@ -1186,6 +1192,89 @@ impl VcpuFd {
+         Ok(())
+     }
+ 
++    /// Initialize VMX-PT file descriptor
++    #[cfg(target_arch = "x86_64")]  
++    pub fn init_kafl_pt(&self) -> Result<File> {
++        let vmx_pt_fd = unsafe { ioctl(self, KVM_VMX_PT_SETUP_FD()) };
++        if vmx_pt_fd < 0 {     
++            return Err(errno::Error::last());
++        }
++        unsafe {
++            Ok(File::from_raw_fd(vmx_pt_fd))
++        }
++    }
++
++    /// Get ToPA size
++    #[cfg(target_arch = "x86_64")]  
++    pub fn get_topa_sz(&self, vmx_pt_fd: &File) -> Result<usize> {
++        let topa_sz = unsafe { ioctl(vmx_pt_fd, KVM_VMX_PT_GET_TOPA_SIZE()) };
++        if topa_sz < 0 {
++            return Err(errno::Error::last());
++        }
++        Ok(topa_sz as usize)
++    }
++
++    /// Create mapped page for ToPA buffer
++    #[cfg(target_arch = "x86_64")]  
++    pub fn create_topa_buffer(&self, vmx_pt_fd: i32, topa_sz: usize) -> Result<usize> {
++        use std::ptr::null_mut;
++        let topa_buffer = unsafe {      
++            libc::mmap(        
++                null_mut(),    
++                topa_sz as usize,
++                libc::PROT_READ,
++                libc::MAP_SHARED,
++                vmx_pt_fd,
++                0
++            )
++        };
++        if topa_buffer == libc::MAP_FAILED {
++            return Err(errno::Error::last());
++        }
++
++        let ret_val = topa_buffer as usize;
++        Ok(ret_val)
++    }
++
++    /// Configure IP filters
++    #[cfg(target_arch = "x86_64")]
++    pub fn configure_ip_filters(&self, vmx_pt_fd: &File, start: u64, end: u64) -> Result<()> {
++        struct vmx_pt_iprs {
++            a: u64,
++            b: u64,
++        };
++        let filter: vmx_pt_iprs = vmx_pt_iprs { a: start, b: end };
++
++        let mut ret = unsafe { ioctl_with_ref(vmx_pt_fd, KVM_VMX_PT_CONFIGURE_ADDR0(), &filter) };
++        if ret < 0 {
++            return Err(errno::Error::last());
++        }
++
++        ret = unsafe { ioctl(vmx_pt_fd, KVM_VMX_PT_ENABLE_ADDR0()) };
++        if ret < 0 {
++            return Err(errno::Error::last());
++        }
++
++        Ok(())
++    }
++
++    /// Enable KVM-PT
++    #[cfg(target_arch = "x86_64")]
++    pub fn enable_kvm_pt(&self, vmx_pt_fd: &File) -> Result<()> {
++        let ret = unsafe { ioctl(vmx_pt_fd, KVM_VMX_PT_ENABLE()) };
++        if ret < 0 {
++            return Err(errno::Error::last());
++        }
++        Ok(())
++    }
++
++    /// Get the current length of the ToPA buffer
++    #[cfg(target_arch = "x86_64")]  
++    pub fn check_topa_overflow(&self, vmx_pt_fd: &File) -> Result<usize> {
++        let topa_sz = unsafe { ioctl(vmx_pt_fd, KVM_VMX_PT_CHECK_TOPA_OVERFLOW()) };
++        Ok(topa_sz as usize)
++    }
++
+     /// Sets the value of one register for this vCPU.
+     ///
+     /// The id of the register is encoded as specified in the kernel documentation
+@@ -1362,6 +1451,7 @@ impl VcpuFd {
+                     let debug = unsafe { run.__bindgen_anon_1.debug };
+                     Ok(VcpuExit::Debug(debug.arch))
+                 }
++                KVM_EXIT_KAFL_TOPA_MAIN_FULL => Ok(VcpuExit::KaflTOPAMainFull),
+                 KVM_EXIT_HLT => Ok(VcpuExit::Hlt),
+                 KVM_EXIT_MMIO => {
+                     // Safe because the exit_reason (which comes from the kernel) told us which
