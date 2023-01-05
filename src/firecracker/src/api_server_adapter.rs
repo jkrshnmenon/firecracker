@@ -18,6 +18,7 @@ use utils::eventfd::EventFd;
 use vmm::resources::VmResources;
 use vmm::rpc_interface::{PrebootApiController, RuntimeApiController, VmmAction};
 use vmm::vmm_config::instance_info::InstanceInfo;
+use vmm::vmm_config::snapshot::LoadSnapshotParams;
 use vmm::{EventManager, FcExitCode, Vmm};
 
 struct ApiServerAdapter {
@@ -125,6 +126,7 @@ pub(crate) fn run_with_api(
     api_payload_limit: usize,
     mmds_size_limit: usize,
     metadata_json: Option<&str>,
+    load_params: Option<LoadSnapshotParams>,
 ) -> FcExitCode {
     // FD to notify of API events. This is a blocking eventfd by design.
     // It is used in the config/pre-boot loop which is a simple blocking loop
@@ -213,6 +215,7 @@ pub(crate) fn run_with_api(
             boot_timer_enabled,
             mmds_size_limit,
             metadata_json,
+            load_params,
         ),
     };
 

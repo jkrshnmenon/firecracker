@@ -23,6 +23,7 @@ use vmm::version_map::{FC_VERSION_TO_SNAP_VERSION, VERSION_MAP};
 use vmm::vmm_config::instance_info::{InstanceInfo, VmState};
 use vmm::vmm_config::logger::{init_logger, LoggerConfig, LoggerLevel};
 use vmm::vmm_config::metrics::{init_metrics, MetricsConfig};
+use vmm::vmm_config::snapshot::{LoadSnapshotParams, MemBackendType, MemBackendConfig};
 use vmm::{EventManager, FcExitCode, HTTP_MAX_PAYLOAD_SIZE};
 
 // The reason we place default API socket under /run is that API socket is a
@@ -122,6 +123,17 @@ fn main_exitable() -> FcExitCode {
                 .takes_value(true)
                 .default_value(DEFAULT_INSTANCE_ID)
                 .help("MicroVM unique identifier."),
+        )
+        .arg(
+            Argument::new("snap-file")
+                .takes_value(true)
+                .help("Path to the snapshot file to be loaded")
+        )
+        .arg(
+            Argument::new("mem-file")
+                .takes_value(true)
+                .requires("snap-file")
+                .help("Path to the memory file to be loaded")
         )
         .arg(
             Argument::new("seccomp-filter")
@@ -264,6 +276,22 @@ fn main_exitable() -> FcExitCode {
     // deprecating one.
     // warn_deprecated_parameters(&arguments);
 
+    let snap_file = arguments.single_value("snap-file");
+    let mem_file = arguments.single_value("mem-file");
+
+    let load_req = match (snap_file, mem_file) {
+        (Some(snap_file), Some(mem_file)) => Some(
+            LoadSnapshotParams{
+                snapshot_path: PathBuf::from(snap_file),
+                mem_backend: MemBackendConfig {
+                    backend_type: MemBackendType::File,
+                    backend_path: PathBuf::from(mem_file),
+                },
+                enable_diff_snapshots: false,
+                resume_vm: true,
+            }),
+        _ => None
+    };
     // It's safe to unwrap here because the field's been provided with a default value.
     let instance_id = arguments.single_value("id").unwrap();
     validate_instance_id(instance_id.as_str()).expect("Invalid instance ID");
@@ -391,6 +419,7 @@ fn main_exitable() -> FcExitCode {
             api_payload_limit,
             mmds_size_limit,
             metadata_json.as_deref(),
+            load_req,
         )
     } else {
         let seccomp_filters: BpfThreadMap = seccomp_filters
