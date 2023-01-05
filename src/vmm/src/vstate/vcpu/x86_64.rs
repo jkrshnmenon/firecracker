@@ -8,7 +8,8 @@
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::{fmt, result};
-// use std::io::Write;
+use std::io::Write;
+use std::fs::File;
 use std::os::unix::io::AsRawFd;
 
 use arch::x86_64::interrupts;
@@ -16,9 +17,7 @@ use arch::x86_64::msr::SetMSRsError;
 use arch::x86_64::regs::{SetupFpuError, SetupRegistersError, SetupSpecialRegistersError};
 use kvm_bindings::{
     kvm_debugregs, kvm_lapic_state, kvm_mp_state, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs,
-    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES, kvm_guest_debug, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP,
-    kvm_guest_debug_arch
-};
+    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES};
 use kvm_ioctls::{VcpuExit, VcpuFd};
 use logger::{error, warn, IncMetric, METRICS};
 use logger::log_jaeger_warning;
@@ -358,94 +357,61 @@ impl KvmVcpu {
     }
 
     pub fn init_kafl_pt(&mut self) {
-        wrap_enable_kvm_debug();
-        // log_jaeger_warning(
-        //     "init_kafl_pt",
-        //     "Enabled kvm_debug"
-        // );
-
-        self.vmx_pt_fd = match wrap_init_kafl_pt(self.fd.as_raw_fd()) {
+        self.vmx_pt_fd = match self.fd.init_kafl_pt() {
             Ok(fd) => Some(fd),
             Err(e) => panic!("VMX_PT_FD: {}", e.to_string())
         };
-        // log_jaeger_warning(
-        //     "init_kafl_pt",
-        //     "Initialized kafl_pt"
-        // );
-
-        match wrap_add_ip_filter(0x400000 as u64, 0x4ca000 as u64) {
-            Ok(()) => (),
-            Err(e) => panic!("Could not add IP filters: {}", e.to_string())
-        };
-
-        match wrap_enable_kafl_pt() {
-            Ok(()) => (),
-            Err(e) => panic!("Could not enable KVM-PT: {}", e.to_string())
-        };
-
-        // Invoke libxdc create_shared_bitmap()
-        match wrap_create_shared_bitmap() {
-            0 => (),
-            _ => panic!("Could not create shared bitmap")
-        };
-        // log_jaeger_warning(
-        //     "init_kafl_pt",
-        //     "Created shared bitmap"
-        // );
-
-        match wrap_init_decoder() {
-            0 => (),
-            _ => panic!("Could not initialize decoder")
-        };
-        // log_jaeger_warning(
-        //     "init_kafl_pt",
-        //     "Initialized decoder"
-        // );
-
-        wrap_enable_xdc_debug();
-        // log_jaeger_warning(
-        //     "init_kafl_pt",
-        //     "Enabled xdc_debug"
-        // );
-
-    }
-
-    pub fn clear_topa_buffer(&self, ctr: u32) {
         let fd = self.vmx_pt_fd.as_ref().unwrap();
-        match wrap_clear_topa_buffer(fd.as_raw_fd()) {
-            0 => (),
-            _ => panic!("Clearing topa buffer failed")
+        log_jaeger_warning(
+            "init_kafl_pt",
+            format!("vmx_pt_fd = {}", fd.as_raw_fd())
+            .as_str()
+        );
+        let topa_sz = match self.fd.get_topa_sz(fd) {
+            Ok(sz) => sz,
+            Err(e) => panic!("TOPA_SZ: {}", e.to_string())
         };
         log_jaeger_warning(
-            "clear_topa_buffer",
-            format!("[{}] Cleared buffer", ctr).as_str()
+            "init_kafl_pt", 
+            format!("topa_sz = {}", topa_sz)
+            .as_str()
+        );
+        self.topa_buffer = match self.fd.create_topa_buffer(fd.as_raw_fd(), topa_sz) {
+            Ok(buffer) => Some(buffer),
+            Err(e) => panic!("fd = {}, sz = {}, TOPA_BUFFER: {}", fd.as_raw_fd(), topa_sz, e.to_string()),
+        };
+        log_jaeger_warning(
+            "init_kafl_pt", 
+            format!("topa_buffer = {:#018x}", self.topa_buffer.unwrap())
+            .as_str()
+        );
+
+        match self.fd.configure_ip_filters(fd, 0x400000, 0x4c8000) {
+            Ok(()) => (),
+            Err(e) => panic!("Configuring IP filters failed: {}", e.to_string()),
+        };
+
+        match self.fd.enable_kvm_pt(fd) {
+            Ok(()) => (),
+            Err(e) => panic!("Enable KVM-PT failed: {}", e.to_string()),
+        };
+        log_jaeger_warning(
+            "init_kafl_pt",
+            "Enabled KVM-PT"
         );
     }
 
-    /// Translate a virtual address to physical address in the guest
-    pub fn guest_virt_to_phys(&self, address: u64) -> u64 {
-        let translation = self.fd.translate_gva(address).unwrap();
-        let mut ret = 0;
-        if translation.valid == 1 {
-            ret = translation.physical_address;
+    pub fn clear_topa_buffer(&self, ctr: u32) {
+        let length = self.fd.check_topa_overflow(self.vmx_pt_fd.as_ref().unwrap()).ok();
+        let raw_ptr: *mut u8 = self.topa_buffer.unwrap() as *mut u8;
+        let mut file = std::fs::File::create(format!("/tmp/topa_dump_{}", ctr)).expect("create topa file failed");
+
+        // Read cur_len bytes from raw_ptr and write them into a file
+        unsafe {
+            let buf: &[u8] = std::slice::from_raw_parts(raw_ptr, length.unwrap());
+            file.write_all(buf).expect("write topa failed");
         }
-        ret
-
-    /// Set the guest debug mode
-    pub fn set_guest_singlestep(&self) {
-        let KVM_GUESTDBG_BLOCKIRQ = 0x100000;
-        let debug_struct = kvm_guest_debug {
-            control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP | KVM_GUESTDBG_BLOCKIRQ,
-            //control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP,
-            pad: 0,
-            arch: kvm_guest_debug_arch {
-                debugreg: [0, 0, 0, 0, 0, 0, 0, 0x00000400],
-                //debugreg: [0, 0, 0, 0, 0, 0, 0, 0],
-            },
-        };
-        // self.fd.set_guest_debug(&debug_struct).unwrap();
     }
-
 
     /// Translate a virtual address to physical address in the guest
     pub fn guest_virt_to_phys(&self, address: u64) -> u64 {
