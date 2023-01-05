@@ -337,6 +337,7 @@ impl<'a> PrebootApiController<'a> {
         boot_timer_enabled: bool,
         mmds_size_limit: usize,
         metadata_json: Option<&str>,
+        load_params: Option<LoadSnapshotParams>,
     ) -> result::Result<(VmResources, Arc<Mutex<Vmm>>), FcExitCode>
     where
         F: Fn() -> VmmAction,
@@ -384,6 +385,10 @@ impl<'a> PrebootApiController<'a> {
             if let Some(exit_code) = preboot_controller.fatal_error {
                 return Err(exit_code);
             }
+        }
+
+        if load_params.is_some() {
+            let _ = preboot_controller.handle_preboot_request(VmmAction::LoadSnapshot(load_params.unwrap()));
         }
 
         // Safe to unwrap because previous loop cannot end on None.
