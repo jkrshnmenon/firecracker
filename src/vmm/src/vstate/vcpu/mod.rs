@@ -276,8 +276,9 @@ impl Vcpu {
     fn running(&mut self) -> StateMachine<Self> {
         // This loop is here just for optimizing the emulation path.
         // No point in ticking the state machine if there are no external events.
+        let mut ctr = 0u32;
         loop {
-            match self.run_emulation() {
+            match self.run_emulation(&mut ctr) {
                 // Emulation ran successfully, continue.
                 Ok(VcpuEmulation::Handled) => (),
                 // Emulation was interrupted, check external events.
@@ -441,7 +442,7 @@ impl Vcpu {
     /// Runs the vCPU in KVM context and handles the kvm exit reason.
     ///
     /// Returns error or enum specifying whether emulation was handled or interrupted.
-    pub fn run_emulation(&self) -> Result<VcpuEmulation> {
+    pub fn run_emulation(&self, ctr: &mut u32) -> Result<VcpuEmulation> {
         match self.emulate() {
             Ok(run) => match run {
                 VcpuExit::MmioRead(addr, data) => {
@@ -509,21 +510,18 @@ impl Vcpu {
                         )))
                     }
                 },
-                VcpuExit::Debug(arch) => {
-                    let sregs = self.kvm_vcpu.fd.get_sregs().unwrap();
+                VcpuExit::KaflTOPAMainFull => {
+                    // ToPA buffer is full
+                    // Dump it to a file somewhere
                     log_jaeger_warning(
                         "run_emulation",
-                        format!(
-                            "[vcpu{}] pc = {:#018x} | cr3 = {:#018x}",
-                            self.kvm_vcpu.index,
-                            arch.pc,
-                            sregs.cr3,
-                        )
+                        format!("[{}] KAFL_TOPA_MAIN_FULL", *ctr)
                         .as_str()
                     );
-                    self.kvm_vcpu.set_guest_singlestep();
+                    self.kvm_vcpu.clear_topa_buffer(*ctr);
+                    *ctr += 1;
                     Ok(VcpuEmulation::Handled)
-                }
+                },
                 arch_specific_reason => {
                     // run specific architecture emulation.
                     self.kvm_vcpu.run_arch_emulation(arch_specific_reason)
