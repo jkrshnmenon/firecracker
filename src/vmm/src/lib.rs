@@ -360,7 +360,7 @@ impl Vmm {
             
             #[cfg(target_arch = "x86_64")]
             vcpu.kvm_vcpu
-                .set_guest_singlestep();
+                .init_kafl_pt();
 
             self.vcpus_handles
                 .push(vcpu.start_threaded(vcpu_seccomp_filter.clone(), barrier.clone())?);
