@@ -8,6 +8,9 @@
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::{fmt, result};
+use std::io::Write;
+use std::fs::File;
+use std::os::unix::io::AsRawFd;
 
 use arch::x86_64::interrupts;
 use arch::x86_64::msr::SetMSRsError;
@@ -15,11 +18,10 @@ use arch::x86_64::regs::{SetupFpuError, SetupRegistersError, SetupSpecialRegiste
 use cpuid::{c3, filter_cpuid, msrs_to_save_by_cpuid, t2, t2s, VmSpec};
 use kvm_bindings::{
     kvm_debugregs, kvm_lapic_state, kvm_mp_state, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs,
-    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES, kvm_guest_debug, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP,
-    kvm_guest_debug_arch
-};
+    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES};
 use kvm_ioctls::{VcpuExit, VcpuFd};
 use logger::{error, warn, IncMetric, METRICS};
+use logger::log_jaeger_warning;
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
@@ -218,6 +220,9 @@ pub struct KvmVcpu {
     pub pio_bus: Option<devices::Bus>,
     pub mmio_bus: Option<devices::Bus>,
 
+    pub vmx_pt_fd: Option<File>,
+    pub topa_buffer: Option<usize>,
+
     msr_list: HashSet<u32>,
 }
 
@@ -236,6 +241,8 @@ impl KvmVcpu {
             fd: kvm_vcpu,
             pio_bus: None,
             mmio_bus: None,
+            vmx_pt_fd: None,
+            topa_buffer: None,
             msr_list: vm.supported_msrs().as_slice().iter().copied().collect(),
         })
     }
@@ -328,21 +335,62 @@ impl KvmVcpu {
         self.pio_bus = Some(pio_bus);
     }
 
-    /// Set the guest debug mode
-    pub fn set_guest_singlestep(&self) {
-        let KVM_GUESTDBG_BLOCKIRQ = 0x100000;
-        let debug_struct = kvm_guest_debug {
-            control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP | KVM_GUESTDBG_BLOCKIRQ,
-            //control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP,
-            pad: 0,
-            arch: kvm_guest_debug_arch {
-                debugreg: [0, 0, 0, 0, 0, 0, 0, 0x00000400],
-                //debugreg: [0, 0, 0, 0, 0, 0, 0, 0],
-            },
+    pub fn init_kafl_pt(&mut self) {
+        self.vmx_pt_fd = match self.fd.init_kafl_pt() {
+            Ok(fd) => Some(fd),
+            Err(e) => panic!("VMX_PT_FD: {}", e.to_string())
         };
-        // self.fd.set_guest_debug(&debug_struct).unwrap();
+        let fd = self.vmx_pt_fd.as_ref().unwrap();
+        log_jaeger_warning(
+            "init_kafl_pt",
+            format!("vmx_pt_fd = {}", fd.as_raw_fd())
+            .as_str()
+        );
+        let topa_sz = match self.fd.get_topa_sz(fd) {
+            Ok(sz) => sz,
+            Err(e) => panic!("TOPA_SZ: {}", e.to_string())
+        };
+        log_jaeger_warning(
+            "init_kafl_pt", 
+            format!("topa_sz = {}", topa_sz)
+            .as_str()
+        );
+        self.topa_buffer = match self.fd.create_topa_buffer(fd.as_raw_fd(), topa_sz) {
+            Ok(buffer) => Some(buffer),
+            Err(e) => panic!("fd = {}, sz = {}, TOPA_BUFFER: {}", fd.as_raw_fd(), topa_sz, e.to_string()),
+        };
+        log_jaeger_warning(
+            "init_kafl_pt", 
+            format!("topa_buffer = {:#018x}", self.topa_buffer.unwrap())
+            .as_str()
+        );
+
+        match self.fd.configure_ip_filters(fd, 0x400000, 0x4c8000) {
+            Ok(()) => (),
+            Err(e) => panic!("Configuring IP filters failed: {}", e.to_string()),
+        };
+
+        match self.fd.enable_kvm_pt(fd) {
+            Ok(()) => (),
+            Err(e) => panic!("Enable KVM-PT failed: {}", e.to_string()),
+        };
+        log_jaeger_warning(
+            "init_kafl_pt",
+            "Enabled KVM-PT"
+        );
     }
 
+    pub fn clear_topa_buffer(&self, ctr: u32) {
+        let length = self.fd.check_topa_overflow(self.vmx_pt_fd.as_ref().unwrap()).ok();
+        let raw_ptr: *mut u8 = self.topa_buffer.unwrap() as *mut u8;
+        let mut file = std::fs::File::create(format!("/tmp/topa_dump_{}", ctr)).expect("create topa file failed");
+
+        // Read cur_len bytes from raw_ptr and write them into a file
+        unsafe {
+            let buf: &[u8] = std::slice::from_raw_parts(raw_ptr, length.unwrap());
+            file.write_all(buf).expect("write topa failed");
+        }
+    }
 
     /// Translate a virtual address to physical address in the guest
     pub fn guest_virt_to_phys(&self, address: u64) -> u64 {
