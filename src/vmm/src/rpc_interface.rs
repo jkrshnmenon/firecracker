@@ -4,6 +4,7 @@
 use std::fmt::{Display, Formatter};
 use std::result;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::path::PathBuf;
 
 use logger::*;
 use mmds::data_store::{self, Mmds};
@@ -39,7 +40,7 @@ use crate::vmm_config::mmds::{MmdsConfig, MmdsConfigError};
 use crate::vmm_config::net::{
     NetworkInterfaceConfig, NetworkInterfaceError, NetworkInterfaceUpdateConfig,
 };
-use crate::vmm_config::snapshot::{CreateSnapshotParams, LoadSnapshotParams, SnapshotType};
+use crate::vmm_config::snapshot::{CreateSnapshotParams, LoadSnapshotParams, SnapshotType, MemBackendConfig, MemBackendType};
 use crate::vmm_config::vsock::{VsockConfigError, VsockDeviceConfig};
 use crate::vmm_config::{self, RateLimiterUpdate};
 use crate::{EventManager, FcExitCode};
@@ -337,7 +338,8 @@ impl<'a> PrebootApiController<'a> {
         boot_timer_enabled: bool,
         mmds_size_limit: usize,
         metadata_json: Option<&str>,
-        load_params: Option<LoadSnapshotParams>,
+        snap_file: Option<&String>,
+        mem_file: Option<&String>
     ) -> result::Result<(VmResources, Arc<Mutex<Vmm>>), FcExitCode>
     where
         F: Fn() -> VmmAction,
@@ -378,7 +380,24 @@ impl<'a> PrebootApiController<'a> {
         // Configure and start microVM through successive API calls.
         // Iterate through API calls to configure microVm.
         // The loop breaks when a microVM is successfully started, and a running Vmm is built.
+        log_jaeger_warning("build_microvm_from_requests", "preboot_controller build loop");
         while preboot_controller.built_vmm.is_none() {
+            match (snap_file, mem_file) {
+                (Some(snap_path), Some(mem_path)) => {
+                    let req = LoadSnapshotParams{
+                        snapshot_path: PathBuf::from(snap_path),
+                        mem_backend: MemBackendConfig {
+                            backend_type: MemBackendType::File,
+                            backend_path: PathBuf::from(mem_path),
+                        },
+                        enable_diff_snapshots: false,
+                        resume_vm: true,
+                    };
+                    respond(preboot_controller.handle_preboot_request(VmmAction::LoadSnapshot(req)));
+                    ()
+                },
+                _ => ()
+            }
             // Get request, process it, send back the response.
             respond(preboot_controller.handle_preboot_request(recv_req()));
             // If any fatal errors were encountered, break the loop.
@@ -387,9 +406,7 @@ impl<'a> PrebootApiController<'a> {
             }
         }
 
-        if load_params.is_some() {
-            let _ = preboot_controller.handle_preboot_request(VmmAction::LoadSnapshot(load_params.unwrap()));
-        }
+        log_jaeger_warning("build_microvm_from_requests", "preboot_controller built vmm");
 
         // Safe to unwrap because previous loop cannot end on None.
         let vmm = preboot_controller.built_vmm.unwrap();
