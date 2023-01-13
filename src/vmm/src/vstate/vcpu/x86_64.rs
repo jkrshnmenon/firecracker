@@ -376,10 +376,10 @@ impl KvmVcpu {
             .as_str()
         );
 
-        match self.fd.configure_ip_filters(fd, 0x400000, 0x4c8000) {
-            Ok(()) => (),
-            Err(e) => panic!("Configuring IP filters failed: {}", e.to_string()),
-        };
+        // match self.fd.configure_ip_filters(fd, 0x400000, 0x4c8000) {
+        //     Ok(()) => (),
+        //     Err(e) => panic!("Configuring IP filters failed: {}", e.to_string()),
+        // };
 
         match self.fd.enable_kvm_pt(fd) {
             Ok(()) => (),
