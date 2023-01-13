@@ -586,6 +586,7 @@ impl<'a> PrebootApiController<'a> {
         })?;
         // Resume VM
         if load_params.resume_vm {
+            log_dev_preview_warning("Virtual machine snapshots", Some("resuming VM"));
             vmm.lock()
                 .expect("Poisoned lock")
                 .resume_vm()
