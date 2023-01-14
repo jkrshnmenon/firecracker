@@ -395,6 +395,9 @@ impl KvmVcpu {
         let length = self.fd.check_topa_overflow(self.vmx_pt_fd.as_ref().unwrap()).ok();
         let raw_ptr: *mut u8 = self.topa_buffer.unwrap() as *mut u8;
         let mut file = std::fs::File::create(format!("/tmp/workdir/topa_dump_{}", ctr)).expect("create topa file failed");
+        
+        // TODO
+        // Invoke copy_topa_buffer(raw_ptr, length) from libxdc
 
         // Read cur_len bytes from raw_ptr and write them into a file
         unsafe {
