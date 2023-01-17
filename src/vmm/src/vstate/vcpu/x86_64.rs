@@ -25,7 +25,7 @@ use logger::log_jaeger_warning;
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
-use xdc::wrap_create_shared_bitmap;
+use xdc::{wrap_create_shared_bitmap, wrap_init_decoder, wrap_enable_debug, wrap_copy_topa_buffer};
 
 use crate::vmm_config::machine_config::CpuFeaturesTemplate;
 use crate::vstate::vcpu::{VcpuConfig, VcpuEmulation};
@@ -381,14 +381,24 @@ impl KvmVcpu {
         );
 
         // Invoke libxdc create_shared_bitmap()
-        match wrap_create_shared_bitmap() {
+        // match wrap_create_shared_bitmap() {
+        //     0 => (),
+        //     _ => panic!("Could not create shared bitmap")
+        // };
+        // log_jaeger_warning(
+        //     "init_kafl_pt",
+        //     "Created shared bitmap"
+        // );
+
+        match wrap_init_decoder() {
             0 => (),
-            _ => panic!("Could not create shared bitmap")
+            _ => panic!("Could not initialize decoder")
         };
         log_jaeger_warning(
             "init_kafl_pt",
-            "Created shared bitmap"
+            "Initialized decoder"
         );
+
     }
 
     pub fn clear_topa_buffer(&self, ctr: u32) {
