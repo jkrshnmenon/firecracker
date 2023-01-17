@@ -1374,7 +1374,6 @@ dependencies = [
  "vm-allocator",
  "vm-memory 0.3.0",
  "vm-superio",
- "xdc",
 ]
 
 [[package]]
