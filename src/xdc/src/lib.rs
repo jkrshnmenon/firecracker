@@ -1,6 +1,7 @@
 // Exposing the libxdc functions
 extern "C" {
     fn create_shared_bitmap() -> i32;
+    fn init_decoder() -> i32;
     fn enable_debug();
     fn copy_topa_buffer(src: *mut u8, size: usize) -> i32;
 }
@@ -8,6 +9,11 @@ extern "C" {
 /// Wrapper around create_shared_bitmap
 pub fn wrap_create_shared_bitmap() -> i32 {
     let ret = unsafe { create_shared_bitmap() };
+    ret
+}
+
+pub fn wrap_init_decoder() -> i32 {
+    let ret = unsafe { init_decoder() };
     ret
 }
 
