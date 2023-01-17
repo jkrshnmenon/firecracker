@@ -399,6 +399,16 @@ impl KvmVcpu {
             "init_kafl_pt",
             "Enabled KVM-PT"
         );
+
+        // Invoke libxdc create_shared_bitmap()
+        match wrap_create_shared_bitmap() {
+            0 => (),
+            _ => panic!("Could not create shared bitmap")
+        };
+        log_jaeger_warning(
+            "init_kafl_pt"
+            "Created shared bitmap"
+        );
     }
 
     pub fn clear_topa_buffer(&self, ctr: u32) {
