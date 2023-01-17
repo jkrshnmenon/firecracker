@@ -24,6 +24,7 @@ use logger::log_jaeger_warning;
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
+use xdc::wrap_create_shared_bitmap;
 
 use crate::cpuid::{c3, filter_cpuid, msrs_to_save_by_cpuid, t2, t2a, t2cl, t2s, VmSpec};
 use crate::vmm_config::machine_config::CpuFeaturesTemplate;
@@ -388,6 +389,16 @@ impl KvmVcpu {
         log_jaeger_warning(
             "init_kafl_pt",
             "Enabled KVM-PT"
+        );
+
+        // Invoke libxdc create_shared_bitmap()
+        match wrap_create_shared_bitmap() {
+            0 => (),
+            _ => panic!("Could not create shared bitmap")
+        };
+        log_jaeger_warning(
+            "init_kafl_pt"
+            "Created shared bitmap"
         );
     }
 
