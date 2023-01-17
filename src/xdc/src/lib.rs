@@ -12,6 +12,7 @@ pub fn wrap_create_shared_bitmap() -> i32 {
     ret
 }
 
+/// Wrapper around init_decoder
 pub fn wrap_init_decoder() -> i32 {
     let ret = unsafe { init_decoder() };
     ret
