@@ -397,7 +397,7 @@ impl KvmVcpu {
             _ => panic!("Could not create shared bitmap")
         };
         log_jaeger_warning(
-            "init_kafl_pt"
+            "init_kafl_pt",
             "Created shared bitmap"
         );
     }
