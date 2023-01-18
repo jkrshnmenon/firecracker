@@ -1,11 +1,37 @@
-use libc::c_uchar;
-
+use std::io::Result;
+use std::io::Error;
 // Exposing the libxdc functions
 extern "C" {
+    // KVM-PT stuff
+    fn init_kafl_pt(kvm_fd: i32) -> i32;
+    fn clear_topa_buffer(vmx_pt_fd: i32) -> i32;
+    fn enable_kvm_debug();
+
+    // XDC stuff
     fn create_shared_bitmap() -> i32;
     fn init_decoder() -> i32;
-    fn enable_debug();
-    fn copy_topa_buffer(src: *const c_uchar, size: usize) -> i32;
+    fn enable_xdc_debug();
+}
+
+/// Wrapper around init_kafl_pt
+pub fn wrap_init_kafl_pt(kvm_fd: i32) -> Result<i32> {
+    let ret = unsafe { init_kafl_pt(kvm_fd) };
+    if ret < 0 {
+        return Err(Error::last_os_error());
+    }
+    Ok(ret)
+}
+
+/// Wrapper around clear_topa_buffer
+pub fn wrap_clear_topa_buffer(vmx_pt_fd: i32) -> i32 {
+    let ret = unsafe { clear_topa_buffer(vmx_pt_fd) };
+    ret
+}
+
+/// Wrapper around enable_kvm_debug
+pub fn wrap_enable_kvm_debug() -> i32 {
+    unsafe { enable_kvm_debug() };
+    0
 }
 
 /// Wrapper around create_shared_bitmap
@@ -21,13 +47,7 @@ pub fn wrap_init_decoder() -> i32 {
 }
 
 /// Wrapper for enable_debug
-pub fn wrap_enable_debug() -> i32 {
-    unsafe { enable_debug() };
+pub fn wrap_enable_xdc_debug() -> i32 {
+    unsafe { enable_xdc_debug() };
     0
-}
-
-/// Wrapper for copy_topa_buffer
-pub fn wrap_copy_topa_buffer(src: *const c_uchar, size: usize) -> i32 {
-    let ret = unsafe { copy_topa_buffer(src, size) };
-    ret
 }
