@@ -361,11 +361,16 @@ impl KvmVcpu {
     }
 
     pub fn init_kafl_pt(&mut self) {
-        self.vmx_pt_fd = match self.fd.init_kafl_pt() {
+        wrap_enable_kvm_debug();
+        log_jaeger_warning(
+            "init_kafl_pt",
+            "Enabled kvm_debug"
+        );
+
+        self.vmx_pt_fd = match wrap_init_kafl_pt(self.fd.as_raw_fd()) {
             Ok(fd) => Some(fd),
             Err(e) => panic!("VMX_PT_FD: {}", e.to_string())
         };
-        let fd = self.vmx_pt_fd.as_ref().unwrap();
         log_jaeger_warning(
             "init_kafl_pt",
             format!("vmx_pt_fd = {}", fd.as_raw_fd())
@@ -423,22 +428,19 @@ impl KvmVcpu {
             "Initialized decoder"
         );
 
+        wrap_enable_xdc_debug();
+        log_jaeger_warning(
+            "init_kafl_pt",
+            "Enabled xdc_debug"
+        );
+
     }
 
     pub fn clear_topa_buffer(&self, ctr: u32) {
-        let length = match self.fd.check_topa_overflow(self.vmx_pt_fd.as_ref().unwrap()) {
-            Ok(len) => len,
-            Err(_e) => panic!("check_topa_overflow")
-        };
-        let raw_ptr: *const u8 = self.topa_buffer.unwrap() as *const u8;
-        // let mut file = std::fs::File::create(format!("/tmp/workdir/topa_dump_{}", ctr)).expect("create topa file failed");
-        
-        // TODO
-        // Invoke copy_topa_buffer(raw_ptr, length) from libxdc
-        // let buf: &[u8]  = unsafe { std::slice::from_raw_parts(raw_ptr, length) };
-        match wrap_copy_topa_buffer(raw_ptr, length) {
+        let fd = self.vmx_pt_fd.as_ref().unwrap();
+        match wrap_clear_topa_buffer(fd.as_raw_fd()) {
             0 => (),
-            _ => panic!("Copying topa buffer failed")
+            _ => panic!("Clearing topa buffer failed")
         };
         log_jaeger_warning(
             "clear_topa_buffer",
