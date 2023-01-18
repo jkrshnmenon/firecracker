@@ -1,9 +1,11 @@
+use libc::c_uchar;
+
 // Exposing the libxdc functions
 extern "C" {
     fn create_shared_bitmap() -> i32;
     fn init_decoder() -> i32;
     fn enable_debug();
-    fn copy_topa_buffer(src: *mut u8, size: usize) -> i32;
+    fn copy_topa_buffer(src: *const c_uchar, size: usize) -> i32;
 }
 
 /// Wrapper around create_shared_bitmap
@@ -25,7 +27,7 @@ pub fn wrap_enable_debug() -> i32 {
 }
 
 /// Wrapper for copy_topa_buffer
-pub fn wrap_copy_topa_buffer(src: *mut u8, size: usize) -> i32 {
+pub fn wrap_copy_topa_buffer(src: *const c_uchar, size: usize) -> i32 {
     let ret = unsafe { copy_topa_buffer(src, size) };
     ret
 }
