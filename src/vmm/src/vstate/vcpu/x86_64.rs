@@ -422,9 +422,24 @@ impl KvmVcpu {
     }
 
     pub fn clear_topa_buffer(&self, ctr: u32) {
-        let length = self.fd.check_topa_overflow(self.vmx_pt_fd.as_ref().unwrap()).ok();
-        let raw_ptr: *mut u8 = self.topa_buffer.unwrap() as *mut u8;
-        let mut file = std::fs::File::create(format!("/tmp/topa_dump_{}", ctr)).expect("create topa file failed");
+        let length = match self.fd.check_topa_overflow(self.vmx_pt_fd.as_ref().unwrap()) {
+            Ok(len) => len,
+            Err(_e) => panic!("check_topa_overflow")
+        };
+        let raw_ptr: *const u8 = self.topa_buffer.unwrap() as *const u8;
+        // let mut file = std::fs::File::create(format!("/tmp/workdir/topa_dump_{}", ctr)).expect("create topa file failed");
+        
+        // TODO
+        // Invoke copy_topa_buffer(raw_ptr, length) from libxdc
+        // let buf: &[u8]  = unsafe { std::slice::from_raw_parts(raw_ptr, length) };
+        match wrap_copy_topa_buffer(raw_ptr, length) {
+            0 => (),
+            _ => panic!("Copying topa buffer failed")
+        };
+        log_jaeger_warning(
+            "clear_topa_buffer",
+            format!("[{}] Cleared buffer", ctr).as_str()
+        );
 
         // Read cur_len bytes from raw_ptr and write them into a file
         unsafe {
