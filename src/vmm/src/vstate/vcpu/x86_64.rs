@@ -24,7 +24,12 @@ use logger::log_jaeger_warning;
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
-use xdc::{wrap_create_shared_bitmap, wrap_init_decoder, wrap_enable_debug, wrap_copy_topa_buffer};
+use xdc::{
+    // wrap_create_shared_bitmap,
+    wrap_init_decoder,
+    wrap_enable_debug,
+    wrap_copy_topa_buffer
+};
 
 use crate::cpuid::{c3, filter_cpuid, msrs_to_save_by_cpuid, t2, t2a, t2cl, t2s, VmSpec};
 use crate::vmm_config::machine_config::CpuFeaturesTemplate;
@@ -423,11 +428,12 @@ impl KvmVcpu {
             Ok(len) => len,
             Err(_e) => panic!("check_topa_overflow")
         };
-        let raw_ptr: *mut u8 = self.topa_buffer.unwrap() as *mut u8;
+        let raw_ptr: *const u8 = self.topa_buffer.unwrap() as *const u8;
         // let mut file = std::fs::File::create(format!("/tmp/workdir/topa_dump_{}", ctr)).expect("create topa file failed");
         
         // TODO
         // Invoke copy_topa_buffer(raw_ptr, length) from libxdc
+        // let buf: &[u8]  = unsafe { std::slice::from_raw_parts(raw_ptr, length) };
         match wrap_copy_topa_buffer(raw_ptr, length) {
             0 => (),
             _ => panic!("Copying topa buffer failed")
