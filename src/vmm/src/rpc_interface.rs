@@ -380,7 +380,7 @@ impl<'a> PrebootApiController<'a> {
         // Configure and start microVM through successive API calls.
         // Iterate through API calls to configure microVm.
         // The loop breaks when a microVM is successfully started, and a running Vmm is built.
-        log_jaeger_warning("build_microvm_from_requests", "preboot_controller build loop");
+        // log_jaeger_warning("build_microvm_from_requests", "preboot_controller build loop");
         while preboot_controller.built_vmm.is_none() {
             match (snap_file, mem_file) {
                 (Some(snap_path), Some(mem_path)) => {
@@ -406,7 +406,7 @@ impl<'a> PrebootApiController<'a> {
             }
         }
 
-        log_jaeger_warning("build_microvm_from_requests", "preboot_controller built vmm");
+        // log_jaeger_warning("build_microvm_from_requests", "preboot_controller built vmm");
 
         // Safe to unwrap because previous loop cannot end on None.
         let vmm = preboot_controller.built_vmm.unwrap();
@@ -586,7 +586,6 @@ impl<'a> PrebootApiController<'a> {
         })?;
         // Resume VM
         if load_params.resume_vm {
-            log_dev_preview_warning("Virtual machine snapshots", Some("resuming VM".to_string()));
             vmm.lock()
                 .expect("Poisoned lock")
                 .resume_vm()
