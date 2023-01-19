@@ -355,44 +355,44 @@ impl KvmVcpu {
 
     pub fn init_kafl_pt(&mut self) {
         wrap_enable_kvm_debug();
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Enabled kvm_debug"
-        );
+        // log_jaeger_warning(
+        //     "init_kafl_pt",
+        //     "Enabled kvm_debug"
+        // );
 
         self.vmx_pt_fd = match wrap_init_kafl_pt(self.fd.as_raw_fd()) {
             Ok(fd) => Some(fd),
             Err(e) => panic!("VMX_PT_FD: {}", e.to_string())
         };
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Initialized kafl_pt"
-        );
+        // log_jaeger_warning(
+        //     "init_kafl_pt",
+        //     "Initialized kafl_pt"
+        // );
 
         // Invoke libxdc create_shared_bitmap()
         match wrap_create_shared_bitmap() {
             0 => (),
             _ => panic!("Could not create shared bitmap")
         };
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Created shared bitmap"
-        );
+        // log_jaeger_warning(
+        //     "init_kafl_pt",
+        //     "Created shared bitmap"
+        // );
 
         match wrap_init_decoder() {
             0 => (),
             _ => panic!("Could not initialize decoder")
         };
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Initialized decoder"
-        );
+        // log_jaeger_warning(
+        //     "init_kafl_pt",
+        //     "Initialized decoder"
+        // );
 
         wrap_enable_xdc_debug();
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Enabled xdc_debug"
-        );
+        // log_jaeger_warning(
+        //     "init_kafl_pt",
+        //     "Enabled xdc_debug"
+        // );
 
     }
 
