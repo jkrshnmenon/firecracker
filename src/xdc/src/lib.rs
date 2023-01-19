@@ -1,5 +1,6 @@
 use std::io::Result;
 use std::io::Error;
+use std::env;
 // Exposing the libxdc functions
 extern "C" {
     // KVM-PT stuff
@@ -30,7 +31,10 @@ pub fn wrap_clear_topa_buffer(vmx_pt_fd: i32) -> i32 {
 
 /// Wrapper around enable_kvm_debug
 pub fn wrap_enable_kvm_debug() -> i32 {
-    unsafe { enable_kvm_debug() };
+    let val = env::var("AFL_DEBUG");
+    if val.is_ok() {
+        unsafe { enable_kvm_debug() };
+    }
     0
 }
 
@@ -48,6 +52,9 @@ pub fn wrap_init_decoder() -> i32 {
 
 /// Wrapper for enable_debug
 pub fn wrap_enable_xdc_debug() -> i32 {
-    unsafe { enable_xdc_debug() };
+    let val = env::var("AFL_DEBUG");
+    if val.is_ok() {
+        unsafe { enable_xdc_debug() };
+    }
     0
 }
