@@ -406,7 +406,7 @@ impl<'a> PrebootApiController<'a> {
             }
         }
 
-        // log_jaeger_warning("build_microvm_from_requests", "preboot_controller built vmm");
+        log_jaeger_warning("build_microvm_from_requests", "preboot_controller built vmm");
 
         // Safe to unwrap because previous loop cannot end on None.
         let vmm = preboot_controller.built_vmm.unwrap();
