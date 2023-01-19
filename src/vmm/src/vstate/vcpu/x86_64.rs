@@ -28,7 +28,7 @@ use xdc::{
     wrap_init_kafl_pt,
     wrap_clear_topa_buffer,
     wrap_enable_kvm_debug,
-    // wrap_create_shared_bitmap,
+    wrap_create_shared_bitmap,
     wrap_init_decoder,
     wrap_enable_xdc_debug,
 };
@@ -359,14 +359,14 @@ impl KvmVcpu {
         );
 
         // Invoke libxdc create_shared_bitmap()
-        // match wrap_create_shared_bitmap() {
-        //     0 => (),
-        //     _ => panic!("Could not create shared bitmap")
-        // };
-        // log_jaeger_warning(
-        //     "init_kafl_pt",
-        //     "Created shared bitmap"
-        // );
+        match wrap_create_shared_bitmap() {
+            0 => (),
+            _ => panic!("Could not create shared bitmap")
+        };
+        log_jaeger_warning(
+            "init_kafl_pt",
+            "Created shared bitmap"
+        );
 
         match wrap_init_decoder() {
             0 => (),

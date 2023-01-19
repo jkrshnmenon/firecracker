@@ -40,8 +40,12 @@ pub fn wrap_enable_kvm_debug() -> i32 {
 
 /// Wrapper around create_shared_bitmap
 pub fn wrap_create_shared_bitmap() -> i32 {
-    let ret = unsafe { create_shared_bitmap() };
-    ret
+    let val = env::var("__AFL_SHM_ID");
+    if val.is_ok() {
+        let ret = unsafe { create_shared_bitmap() };
+        return ret;
+    }
+    0
 }
 
 /// Wrapper around init_decoder
