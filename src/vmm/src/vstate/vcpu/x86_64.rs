@@ -25,6 +25,8 @@ use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
 use xdc::{
     wrap_init_kafl_pt,
+    wrap_enable_kafl_pt,
+    wrap_add_ip_filter,
     wrap_clear_topa_buffer,
     wrap_enable_kvm_debug,
     wrap_create_shared_bitmap,
@@ -368,6 +370,16 @@ impl KvmVcpu {
         //     "init_kafl_pt",
         //     "Initialized kafl_pt"
         // );
+
+        match wrap_add_ip_filter(0x400000 as u64, 0x4ca000 as u64) {
+            Ok(()) => (),
+            Err(e) => panic!("Could not add IP filters: {}", e.to_string())
+        };
+
+        match wrap_enable_kafl_pt() {
+            Ok(()) => (),
+            Err(e) => panic!("Could not enable KVM-PT: {}", e.to_string())
+        };
 
         // Invoke libxdc create_shared_bitmap()
         match wrap_create_shared_bitmap() {
