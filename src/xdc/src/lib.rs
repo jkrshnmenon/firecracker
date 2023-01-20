@@ -5,6 +5,8 @@ use std::env;
 extern "C" {
     // KVM-PT stuff
     fn init_kafl_pt(kvm_fd: i32) -> i32;
+    fn enable_kafl_pt() -> i32;
+    fn add_ip_filter(start: u64, end: u64) -> i32;
     fn clear_topa_buffer(vmx_pt_fd: i32) -> i32;
     fn enable_kvm_debug();
 
@@ -21,6 +23,24 @@ pub fn wrap_init_kafl_pt(kvm_fd: i32) -> Result<i32> {
         return Err(Error::last_os_error());
     }
     Ok(ret)
+}
+
+/// Wrapper around enable_kafl_pt
+pub fn wrap_enable_kafl_pt() -> Result<()> {
+    let ret = unsafe { enable_kafl_pt() };
+    if ret < 0 {
+        return Err(Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Wrapper around add_ip_filter
+pub fn wrap_add_ip_filter(start: u64, end: u64) -> Result<()> {
+    let ret = unsafe { add_ip_filter(start, end) };
+    if ret < 0 {
+        return Err(Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// Wrapper around clear_topa_buffer
