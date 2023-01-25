@@ -522,6 +522,14 @@ impl Vcpu {
                     *ctr += 1;
                     Ok(VcpuEmulation::Handled)
                 },
+                VcpuExit::KaflUserAbort(arg0) => {
+                    log_jaeger_warning(
+                        "run_emulation",
+                        format!("KAFL_USER_ABORT: {}", arg0)
+                        .as_str()
+                    );
+                    Ok(VcpuEmulation::Handled)
+                },
                 arch_specific_reason => {
                     // run specific architecture emulation.
                     self.kvm_vcpu.run_arch_emulation(arch_specific_reason)
