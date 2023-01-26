@@ -288,6 +288,8 @@ impl Vcpu {
                 // - the other vCPUs won't ever exit out of `KVM_RUN`, but they won't consume CPU.
                 // So we pause vCPU0 and send a signal to the emulation thread to stop the VMM.
                 Ok(VcpuEmulation::Stopped) => return self.exit(FcExitCode::Ok),
+                // We found a crash
+                Ok(VcpuEmulation::Crashed) => return self.exit(FcExitCode::GenericError),
                 // Emulation errors lead to vCPU exit.
                 Err(_) => return self.exit(FcExitCode::GenericError),
             }
@@ -528,7 +530,7 @@ impl Vcpu {
                         format!("KAFL_USER_ABORT: {}", arg0)
                         .as_str()
                     );
-                    Ok(VcpuEmulation::Handled)
+                    Ok(VcpuEmulation::Crashed)
                 },
                 arch_specific_reason => {
                     // run specific architecture emulation.
@@ -679,6 +681,7 @@ pub enum VcpuEmulation {
     Handled,
     Interrupted,
     Stopped,
+    Crashed,
 }
 
 #[cfg(test)]
