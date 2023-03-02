@@ -532,6 +532,14 @@ impl Vcpu {
                     );
                     Ok(VcpuEmulation::Crashed)
                 },
+                VcpuExit::KaflGetProgram(arg0) => {
+                    log_jaeger_warning(
+                        "run_emulation",
+                        format!("KAFL_GET_PROGRAM: {}", arg0)
+                        .as_str()
+                    );
+                    Ok(VcpuEmulation::Handled)
+                }
                 arch_specific_reason => {
                     // run specific architecture emulation.
                     self.kvm_vcpu.run_arch_emulation(arch_specific_reason)
