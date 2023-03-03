@@ -533,9 +533,10 @@ impl Vcpu {
                     Ok(VcpuEmulation::Crashed)
                 },
                 VcpuExit::KaflGetProgram(arg0) => {
+                    let sregs = self.kvm_vcpu.fd.get_sregs().unwrap();
                     log_jaeger_warning(
                         "run_emulation",
-                        format!("KAFL_GET_PROGRAM: {}", arg0)
+                        format!("KAFL_GET_PROGRAM: {}\tCR3 = {}", arg0, sregs.cr3)
                         .as_str()
                     );
                     Ok(VcpuEmulation::Handled)
