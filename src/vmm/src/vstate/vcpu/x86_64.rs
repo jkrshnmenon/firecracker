@@ -353,6 +353,12 @@ impl KvmVcpu {
         self.fd.set_guest_debug(&debug_struct).unwrap();
     }
 
+    /// Better way to get the registers
+    pub fn get_regs(&self) -> Result<kvm_regs> {
+        let regs = self.fd.get_regs().map_err(Error::VcpuGetRegs)?;
+        Ok(regs)
+    }
+
     /// Translate a virtual address to physical address in the guest
     pub fn guest_virt_to_phys(&self, address: u64) -> u64 {
         let translation = self.fd.translate_gva(address).unwrap();
