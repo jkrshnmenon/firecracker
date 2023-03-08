@@ -7,6 +7,7 @@ extern "C" {
     fn init_kafl_pt(kvm_fd: i32) -> i32;
     fn enable_kafl_pt() -> i32;
     fn add_ip_filter(start: u64, end: u64) -> i32;
+    fn add_cr3_filter(cr3: u64) -> i32;
     fn clear_topa_buffer(vmx_pt_fd: i32) -> i32;
     fn enable_kvm_debug();
 
@@ -37,6 +38,15 @@ pub fn wrap_enable_kafl_pt() -> Result<()> {
 /// Wrapper around add_ip_filter
 pub fn wrap_add_ip_filter(start: u64, end: u64) -> Result<()> {
     let ret = unsafe { add_ip_filter(start, end) };
+    if ret < 0 {
+        return Err(Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Wrapper around add_cr3_filter
+pub fn wrap_add_cr3_filter(cr3: u64) -> Result<()> {
+    let ret = unsafe { add_cr3_filter(cr3) };
     if ret < 0 {
         return Err(Error::last_os_error());
     }

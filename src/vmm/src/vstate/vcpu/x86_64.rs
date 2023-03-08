@@ -28,6 +28,7 @@ use xdc::{
     wrap_init_kafl_pt,
     wrap_enable_kafl_pt,
     wrap_add_ip_filter,
+    wrap_add_cr3_filter,
     wrap_clear_topa_buffer,
     wrap_enable_kvm_debug,
     wrap_create_shared_bitmap,
@@ -395,9 +396,14 @@ impl KvmVcpu {
             .as_str()
         );
 
-        match self.fd.configure_ip_filters(fd, 0x400000, 0x4c8000) {
+        // match wrap_add_ip_filter(0x400000 as u64, 0x4ca000 as u64) {
+        //     Ok(()) => (),
+        //     Err(e) => panic!("Could not add IP filters: {}", e.to_string())
+        // };
+
+        match wrap_add_cr3_filter(0) {
             Ok(()) => (),
-            Err(e) => panic!("Configuring IP filters failed: {}", e.to_string()),
+            Err(e) => panic!("Could not add CR3 filters: {}", e.to_string()
         };
 
         match self.fd.enable_kvm_pt(fd) {
