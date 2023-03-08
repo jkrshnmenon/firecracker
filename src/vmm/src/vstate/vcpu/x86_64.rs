@@ -24,18 +24,6 @@ use logger::log_jaeger_warning;
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
-use xdc::{
-    wrap_init_kafl_pt,
-    wrap_enable_kafl_pt,
-    wrap_add_ip_filter,
-    wrap_add_cr3_filter,
-    wrap_clear_topa_buffer,
-    wrap_enable_kvm_debug,
-    wrap_create_shared_bitmap,
-    wrap_init_decoder,
-    wrap_enable_xdc_debug,
-};
-
 use crate::cpuid::{c3, filter_cpuid, msrs_to_save_by_cpuid, t2, t2a, t2cl, t2s, VmSpec};
 use crate::vmm_config::machine_config::CpuFeaturesTemplate;
 use crate::vstate::vcpu::{VcpuConfig, VcpuEmulation};
@@ -359,105 +347,6 @@ impl KvmVcpu {
     /// Sets a Port Mapped IO bus for this vcpu.
     pub fn set_pio_bus(&mut self, pio_bus: devices::Bus) {
         self.pio_bus = Some(pio_bus);
-    }
-
-    pub fn init_kafl_pt(&mut self) {
-        wrap_enable_kvm_debug();
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Enabled kvm_debug"
-        );
-
-        self.vmx_pt_fd = match wrap_init_kafl_pt(self.fd.as_raw_fd()) {
-            Ok(fd) => Some(fd),
-            Err(e) => panic!("VMX_PT_FD: {}", e.to_string())
-        };
-        log_jaeger_warning(
-            "init_kafl_pt",
-            format!("vmx_pt_fd = {}", fd.as_raw_fd())
-            .as_str()
-        );
-        let topa_sz = match self.fd.get_topa_sz(fd) {
-            Ok(sz) => sz,
-            Err(e) => panic!("TOPA_SZ: {}", e.to_string())
-        };
-        log_jaeger_warning(
-            "init_kafl_pt", 
-            format!("topa_sz = {}", topa_sz)
-            .as_str()
-        );
-        self.topa_buffer = match self.fd.create_topa_buffer(fd.as_raw_fd(), topa_sz) {
-            Ok(buffer) => Some(buffer),
-            Err(e) => panic!("fd = {}, sz = {}, TOPA_BUFFER: {}", fd.as_raw_fd(), topa_sz, e.to_string()),
-        };
-        log_jaeger_warning(
-            "init_kafl_pt", 
-            format!("topa_buffer = {:#018x}", self.topa_buffer.unwrap())
-            .as_str()
-        );
-
-        // match wrap_add_ip_filter(0x400000 as u64, 0x4ca000 as u64) {
-        //     Ok(()) => (),
-        //     Err(e) => panic!("Could not add IP filters: {}", e.to_string())
-        // };
-
-        match wrap_add_cr3_filter(0) {
-            Ok(()) => (),
-            Err(e) => panic!("Could not add CR3 filters: {}", e.to_string()
-        };
-
-        match self.fd.enable_kvm_pt(fd) {
-            Ok(()) => (),
-            Err(e) => panic!("Enable KVM-PT failed: {}", e.to_string()),
-        };
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Enabled KVM-PT"
-        );
-
-        // Invoke libxdc create_shared_bitmap()
-        // match wrap_create_shared_bitmap() {
-        //     0 => (),
-        //     _ => panic!("Could not create shared bitmap")
-        // };
-        // log_jaeger_warning(
-        //     "init_kafl_pt",
-        //     "Created shared bitmap"
-        // );
-
-        match wrap_init_decoder() {
-            0 => (),
-            _ => panic!("Could not initialize decoder")
-        };
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Initialized decoder"
-        );
-
-        wrap_enable_xdc_debug();
-        log_jaeger_warning(
-            "init_kafl_pt",
-            "Enabled xdc_debug"
-        );
-
-    }
-
-    pub fn clear_topa_buffer(&self, ctr: u32) {
-        let fd = self.vmx_pt_fd.as_ref().unwrap();
-        match wrap_clear_topa_buffer(fd.as_raw_fd()) {
-            0 => (),
-            _ => panic!("Clearing topa buffer failed")
-        };
-        log_jaeger_warning(
-            "clear_topa_buffer",
-            format!("[{}] Cleared buffer", ctr).as_str()
-        );
-
-        // Read cur_len bytes from raw_ptr and write them into a file
-        unsafe {
-            let buf: &[u8] = std::slice::from_raw_parts(raw_ptr, length.unwrap());
-            file.write_all(buf).expect("write topa failed");
-        }
     }
 
     /// Translate a virtual address to physical address in the guest
