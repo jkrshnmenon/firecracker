@@ -512,35 +512,6 @@ impl Vcpu {
                         )))
                     }
                 },
-                VcpuExit::KaflTOPAMainFull => {
-                    // ToPA buffer is full
-                    // Dump it to a file somewhere
-                    log_jaeger_warning(
-                        "run_emulation",
-                        format!("[{}] KAFL_TOPA_MAIN_FULL", *ctr)
-                        .as_str()
-                    );
-                    self.kvm_vcpu.clear_topa_buffer(*ctr);
-                    *ctr += 1;
-                    Ok(VcpuEmulation::Handled)
-                },
-                VcpuExit::KaflUserAbort(arg0) => {
-                    log_jaeger_warning(
-                        "run_emulation",
-                        format!("KAFL_USER_ABORT: {}", arg0)
-                        .as_str()
-                    );
-                    Ok(VcpuEmulation::Crashed)
-                },
-                VcpuExit::KaflGetProgram(arg0) => {
-                    let sregs = self.kvm_vcpu.fd.get_sregs().unwrap();
-                    log_jaeger_warning(
-                        "run_emulation",
-                        format!("KAFL_GET_PROGRAM: {}\tCR3 = {}", arg0, sregs.cr3)
-                        .as_str()
-                    );
-                    Ok(VcpuEmulation::Handled)
-                }
                 arch_specific_reason => {
                     // run specific architecture emulation.
                     self.kvm_vcpu.run_arch_emulation(arch_specific_reason)
