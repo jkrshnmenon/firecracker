@@ -514,7 +514,16 @@ impl Vcpu {
                     }
                 },
                 VcpuExit::Debug(arch) => {
-                    log_jaeger_warning("run_emulation", "KVM_EXIT_DEBUG");
+                    let mut regs = self.kvm_vcpu.get_regs().unwrap();
+                    log_jaeger_warning(
+                        "run_emulation",
+                        format!("KVM_EXIT_DEBUG: RIP = {:#016x}", regs.rip).as_str()
+                    );
+                    /*
+                     * Now I need to call the oracle with this RIP
+                     * And unmodify the instruction at this address
+                     */
+
                 }
                 arch_specific_reason => {
                     // run specific architecture emulation.
