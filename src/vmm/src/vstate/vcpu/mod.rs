@@ -513,6 +513,9 @@ impl Vcpu {
                         )))
                     }
                 },
+                VcpuExit::Debug(arch) => {
+                    log_jaeger_warning("run_emulation", "KVM_EXIT_DEBUG");
+                }
                 arch_specific_reason => {
                     // run specific architecture emulation.
                     self.kvm_vcpu.run_arch_emulation(arch_specific_reason)

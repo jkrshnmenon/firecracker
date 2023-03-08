@@ -357,6 +357,10 @@ impl Vmm {
             #[cfg(target_arch = "x86_64")]
             vcpu.kvm_vcpu
                 .set_pio_bus(self.pio_device_manager.io_bus.clone());
+
+            #[cfg(target_arch = "x86_64")]
+            vcpu.kvm_vcpu
+                .enable_debug();
             
             self.vcpus_handles
                 .push(vcpu.start_threaded(vcpu_seccomp_filter.clone(), barrier.clone())?);
