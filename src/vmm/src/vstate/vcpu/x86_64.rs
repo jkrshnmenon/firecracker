@@ -8,9 +8,6 @@
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::{fmt, result};
-use std::io::Write;
-use std::fs::File;
-use std::os::unix::io::AsRawFd;
 
 use arch::x86_64::interrupts;
 use arch::x86_64::msr::SetMSRsError;
@@ -20,7 +17,7 @@ use kvm_bindings::{
     kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES};
 use kvm_ioctls::{VcpuExit, VcpuFd};
 use logger::{error, warn, IncMetric, METRICS};
-use logger::log_jaeger_warning;
+//use logger::log_jaeger_warning;
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
@@ -219,9 +216,6 @@ pub struct KvmVcpu {
     pub pio_bus: Option<devices::Bus>,
     pub mmio_bus: Option<devices::Bus>,
 
-    pub vmx_pt_fd: Option<i32>,
-    pub topa_buffer: Option<usize>,
-
     msr_list: HashSet<u32>,
 }
 
@@ -240,8 +234,6 @@ impl KvmVcpu {
             fd: kvm_vcpu,
             pio_bus: None,
             mmio_bus: None,
-            vmx_pt_fd: None,
-            topa_buffer: None,
             msr_list: vm.supported_msrs().as_slice().iter().copied().collect(),
         })
     }

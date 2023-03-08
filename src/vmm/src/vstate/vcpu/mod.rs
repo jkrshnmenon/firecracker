@@ -16,7 +16,9 @@ use std::{fmt, io, result, thread};
 use kvm_bindings::{KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN};
 use kvm_ioctls::VcpuExit;
 use libc::{c_int, c_void, siginfo_t};
-use logger::{error, info, IncMetric, METRICS, log_jaeger_warning};
+use logger::{error, info, IncMetric, METRICS, log_jaeger_warning,
+    //log_jaeger_warning
+};
 use seccompiler::{BpfProgram, BpfProgramRef};
 use utils::errno;
 use utils::eventfd::EventFd;
@@ -276,9 +278,8 @@ impl Vcpu {
     fn running(&mut self) -> StateMachine<Self> {
         // This loop is here just for optimizing the emulation path.
         // No point in ticking the state machine if there are no external events.
-        let mut ctr = 0u32;
         loop {
-            match self.run_emulation(&mut ctr) {
+            match self.run_emulation() {
                 // Emulation ran successfully, continue.
                 Ok(VcpuEmulation::Handled) => (),
                 // Emulation was interrupted, check external events.
@@ -444,7 +445,7 @@ impl Vcpu {
     /// Runs the vCPU in KVM context and handles the kvm exit reason.
     ///
     /// Returns error or enum specifying whether emulation was handled or interrupted.
-    pub fn run_emulation(&self, ctr: &mut u32) -> Result<VcpuEmulation> {
+    pub fn run_emulation(&self) -> Result<VcpuEmulation> {
         match self.emulate() {
             Ok(run) => match run {
                 VcpuExit::MmioRead(addr, data) => {
