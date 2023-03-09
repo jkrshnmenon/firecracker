@@ -14,7 +14,10 @@ use arch::x86_64::msr::SetMSRsError;
 use arch::x86_64::regs::{SetupFpuError, SetupRegistersError, SetupSpecialRegistersError};
 use kvm_bindings::{
     kvm_debugregs, kvm_lapic_state, kvm_mp_state, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs,
-    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES, KVM_GUESTDBG_USE_SW_BP};
+    kvm_xsave, CpuId, Msrs, KVM_MAX_MSR_ENTRIES,
+    KVM_GUESTDBG_USE_SW_BP, KVM_GUESTDBG_ENABLE,
+    kvm_guest_debug, kvm_guest_debug_arch,
+};
 use kvm_ioctls::{VcpuExit, VcpuFd};
 use logger::{error, warn, IncMetric, METRICS};
 //use logger::log_jaeger_warning;
@@ -343,7 +346,7 @@ impl KvmVcpu {
 
     /// Enable the debug mode
     pub fn enable_debug(&self) {
-        let mut debug_struct = kvm_guest_debug {
+        let debug_struct = kvm_guest_debug {
             control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_USE_SW_BP,
             pad: 0,
             arch: kvm_guest_debug_arch {
@@ -357,6 +360,14 @@ impl KvmVcpu {
     pub fn get_regs(&self) -> Result<kvm_regs> {
         let regs = self.fd.get_regs().map_err(Error::VcpuGetRegs)?;
         Ok(regs)
+    }
+
+    /// Better way to set the registers
+    pub fn set_regs(&self, regs: kvm_regs) -> std::result::Result<(), kvm_ioctls::Error> {
+        match self.fd.set_regs(&regs) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e)
+        }
     }
 
     /// Translate a virtual address to physical address in the guest
