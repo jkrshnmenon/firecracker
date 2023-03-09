@@ -833,6 +833,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
+name = "oracle"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "logger",
+]
+
+[[package]]
 name = "os_str_bytes"
 version = "6.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1360,6 +1368,7 @@ dependencies = [
  "linux-loader",
  "logger",
  "mmds",
+ "oracle",
  "rate_limiter",
  "seccompiler",
  "serde",
