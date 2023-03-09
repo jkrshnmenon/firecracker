@@ -285,11 +285,11 @@ impl Vcpu {
         // No point in ticking the state machine if there are no external events.
         /*
          * We set up the handshake with the oracle here
-         */
         match init_handshake() {
             Ok(()) => log_jaeger_warning("running", "Connected to oracle"),
             Err(e) => panic!("Could not connect to oracle: {}", e)
         };
+         */
 
         loop {
             match self.run_emulation() {
@@ -526,18 +526,18 @@ impl Vcpu {
                         )))
                     }
                 },
-                VcpuExit::Debug(_arch) => {
-                    let regs = self.kvm_vcpu.get_regs().unwrap();
+                VcpuExit::Debug(arch) => {
+                    let mut regs = self.kvm_vcpu.get_regs().unwrap();
                     let phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
                     log_jaeger_warning(
                         "run_emulation",
-                        format!("KVM_EXIT_DEBUG: RIP = {:#016x} | Physical RIP = {:#016x}",
-                            regs.rip, phys_addr).as_str()
+                        format!("KVM_EXIT_DEBUG: PC = {:#016x} | RIP = {:#016x} | Physical RIP = {:#016x}",
+                            arch.pc, regs.rip, phys_addr).as_str()
                     );
                     /*
                      * Now I need to call the oracle with this RIP
-                     */
                     let _fix_bytes: [u8; BP_LEN] = send_breakpoint_event(regs.rip, phys_addr);
+                     */
                     /*
                      * And unmodify the instruction at this address
                      */
@@ -545,6 +545,7 @@ impl Vcpu {
                     /*
                      * Reset the RIP and continue execution
                      */
+                    regs.rip = regs.rip + 1;
                     match self.kvm_vcpu.set_regs(regs) {
                         Ok(()) => Ok(VcpuEmulation::Handled),
                         Err(e) => {
@@ -555,6 +556,7 @@ impl Vcpu {
                             Ok(VcpuEmulation::Stopped)
                         }
                     }
+                    // Ok(VcpuEmulation::Handled)
                 }
                 arch_specific_reason => {
                     // run specific architecture emulation.
