@@ -20,7 +20,7 @@ use kvm_bindings::{
 };
 use kvm_ioctls::{VcpuExit, VcpuFd};
 use logger::{error, warn, IncMetric, METRICS};
-//use logger::log_jaeger_warning;
+use logger::log_jaeger_warning;
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
@@ -356,6 +356,18 @@ impl KvmVcpu {
         self.fd.set_guest_debug(&debug_struct).unwrap();
     }
 
+    /// Disable the debug mode
+    pub fn disable_debug(&self) {
+        let debug_struct = kvm_guest_debug {
+            control: 0,
+            pad: 0,
+            arch: kvm_guest_debug_arch {
+                debugreg: [0, 0, 0, 0, 0, 0, 0, 0],
+             }
+        };
+        self.fd.set_guest_debug(&debug_struct).unwrap();
+    }
+
     /// Better way to get the registers
     pub fn get_regs(&self) -> Result<kvm_regs> {
         let regs = self.fd.get_regs().map_err(Error::VcpuGetRegs)?;
@@ -376,6 +388,9 @@ impl KvmVcpu {
         let mut ret = 0;
         if translation.valid == 1 {
             ret = translation.physical_address;
+        } else {
+            use std::io::Error;
+            log_jaeger_warning("guest_virt_to_phys", format!("{}", Error::last_os_error()).as_str());
         }
         ret
     }

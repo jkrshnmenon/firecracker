@@ -526,13 +526,14 @@ impl Vcpu {
                         )))
                     }
                 },
-                VcpuExit::Debug(arch) => {
+                VcpuExit::Debug(_arch) => {
+                    // self.kvm_vcpu.disable_debug();
                     let mut regs = self.kvm_vcpu.get_regs().unwrap();
                     let phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
                     log_jaeger_warning(
                         "run_emulation",
-                        format!("KVM_EXIT_DEBUG: PC = {:#016x} | RIP = {:#016x} | Physical RIP = {:#016x}",
-                            arch.pc, regs.rip, phys_addr).as_str()
+                        format!("KVM_EXIT_DEBUG: RIP = {:#016x} | Physical RIP = {:#016x}",
+                           regs.rip, phys_addr).as_str()
                     );
                     /*
                      * Now I need to call the oracle with this RIP
