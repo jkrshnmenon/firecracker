@@ -255,7 +255,7 @@ fn create_vmm_and_vcpus(
     )
     .map_err(StartMicrovmError::RegisterMmioDevice)?;
 
-    let vcpus;
+    let mut vcpus;
     // For x86_64 we need to create the interrupt controller before calling `KVM_CREATE_VCPUS`
     // while on aarch64 we need to do it the other way around.
     #[cfg(target_arch = "x86_64")]
@@ -292,6 +292,9 @@ fn create_vmm_and_vcpus(
         setup_interrupt_controller(&mut vm, vcpu_count)?;
     }
 
+    for i in &mut vcpus {
+        i.kvm_vcpu.guest_memory_map = Some(guest_memory.clone());
+    }
     let vmm = Vmm {
         events_observer: Some(Box::new(SerialStdin::get())),
         instance_info: instance_info.clone(),

@@ -219,6 +219,7 @@ pub struct KvmVcpu {
     pub pio_bus: Option<devices::Bus>,
     pub mmio_bus: Option<devices::Bus>,
 
+    pub guest_memory_map: Option<GuestMemoryMmap>,
     msr_list: HashSet<u32>,
 }
 
@@ -237,6 +238,7 @@ impl KvmVcpu {
             fd: kvm_vcpu,
             pio_bus: None,
             mmio_bus: None,
+            guest_memory_map: None,
             msr_list: vm.supported_msrs().as_slice().iter().copied().collect(),
         })
     }
@@ -269,6 +271,8 @@ impl KvmVcpu {
                 err
             })
             .map_err(KvmVcpuConfigureError::FilterCpuid)?;
+
+        self.guest_memory_map = Some(guest_mem.clone());
 
         // Update the CPUID based on the template
         match vcpu_config.cpu_template {
