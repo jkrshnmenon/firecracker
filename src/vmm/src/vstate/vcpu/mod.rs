@@ -29,6 +29,7 @@ use utils::errno;
 use utils::eventfd::EventFd;
 use utils::signal::{register_signal_handler, sigrtmin, Killable};
 use utils::sm::StateMachine;
+use vm_memory::{GuestAddress, Bytes};
 
 use crate::vmm_config::machine_config::CpuFeaturesTemplate;
 use crate::vstate::vm::Vm;
@@ -527,7 +528,6 @@ impl Vcpu {
                     }
                 },
                 VcpuExit::Debug(_arch) => {
-                    // self.kvm_vcpu.disable_debug();
                     let mut regs = self.kvm_vcpu.get_regs().unwrap();
                     let phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
                     log_jaeger_warning(
@@ -537,12 +537,21 @@ impl Vcpu {
                     );
                     /*
                      * Now I need to call the oracle with this RIP
-                    let _fix_bytes: [u8; BP_LEN] = send_breakpoint_event(regs.rip, phys_addr);
                      */
+                    let fix_bytes: [u8; BP_LEN] = send_breakpoint_event(regs.rip, phys_addr);
                     /*
                      * And unmodify the instruction at this address
                      */
-
+                    match &self.kvm_vcpu.guest_memory_map {
+                        Some(gm) => {
+                            gm.write_slice(fix_bytes, GuestAddress(phys_addr))
+                                .expect("Failed to write slice");
+                            // log_jaeger_warning("run_emulation", format!("Slice = {:?}", buf).as_str());
+                        },
+                        None => {
+                            log_jaeger_warning("run_emulation", "No memory map");
+                        }
+                    };
                     /*
                      * Reset the RIP and continue execution
                      */
