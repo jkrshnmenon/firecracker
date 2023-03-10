@@ -537,14 +537,15 @@ impl Vcpu {
                     );
                     /*
                      * Now I need to call the oracle with this RIP
-                     */
                     let fix_bytes: [u8; BP_LEN] = send_breakpoint_event(regs.rip, phys_addr);
+                     */
+                    let fix_bytes: [u8; BP_LEN] = [0x90];
                     /*
                      * And unmodify the instruction at this address
                      */
                     match &self.kvm_vcpu.guest_memory_map {
                         Some(gm) => {
-                            gm.write_slice(fix_bytes, GuestAddress(phys_addr))
+                            gm.write_slice(&fix_bytes, GuestAddress(phys_addr))
                                 .expect("Failed to write slice");
                             // log_jaeger_warning("run_emulation", format!("Slice = {:?}", buf).as_str());
                         },
