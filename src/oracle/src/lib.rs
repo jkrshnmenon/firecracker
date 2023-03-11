@@ -62,7 +62,7 @@ pub fn init_handshake() -> std::io::Result<()> {
 /// The address of the current RIP and the physical address will be sent to the Oracle
 /// The Oracle will send us the bytes that should be replaced
 pub fn send_breakpoint_event(pc_addr: u64, phys_addr: u64) -> [u8; BP_LEN] {
-    let msg = format!("{:#016x}:{:#016x}", pc_addr, phys_addr);
+    let msg = format!("{:#016x}:{:#016x}\n", pc_addr, phys_addr);
     match send_message(&msg) {
         Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
         Err(e) => panic!("{}", e)

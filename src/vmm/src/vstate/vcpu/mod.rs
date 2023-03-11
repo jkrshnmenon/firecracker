@@ -276,6 +276,11 @@ impl Vcpu {
             );
         }
 
+        match init_handshake() {
+            Ok(()) => log_jaeger_warning("running", "Connected to oracle"),
+            Err(e) => panic!("Could not connect to oracle: {}", e)
+        };
+
         // Start running the machine state in the `Paused` state.
         StateMachine::run(self, Self::paused);
     }
@@ -286,12 +291,7 @@ impl Vcpu {
         // No point in ticking the state machine if there are no external events.
         /*
          * We set up the handshake with the oracle here
-        match init_handshake() {
-            Ok(()) => log_jaeger_warning("running", "Connected to oracle"),
-            Err(e) => panic!("Could not connect to oracle: {}", e)
-        };
          */
-
         loop {
             match self.run_emulation() {
                 // Emulation ran successfully, continue.
@@ -537,9 +537,9 @@ impl Vcpu {
                     );
                     /*
                      * Now I need to call the oracle with this RIP
-                    let fix_bytes: [u8; BP_LEN] = send_breakpoint_event(regs.rip, phys_addr);
                      */
-                    let fix_bytes: [u8; BP_LEN] = [0x90];
+                    let fix_bytes: [u8; BP_LEN] = send_breakpoint_event(regs.rip, phys_addr);
+                    // let fix_bytes: [u8; BP_LEN] = [0x90];
                     /*
                      * And unmodify the instruction at this address
                      */

@@ -392,9 +392,6 @@ impl KvmVcpu {
         let mut ret = 0;
         if translation.valid == 1 {
             ret = translation.physical_address;
-        } else {
-            use std::io::Error;
-            log_jaeger_warning("guest_virt_to_phys", format!("{}", Error::last_os_error()).as_str());
         }
         ret
     }
