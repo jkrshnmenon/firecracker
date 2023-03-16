@@ -276,10 +276,13 @@ impl Vcpu {
             );
         }
 
+        /*
+         * We set up the handshake with the oracle here
         match init_handshake() {
             Ok(()) => log_jaeger_warning("running", "Connected to oracle"),
             Err(e) => panic!("Could not connect to oracle: {}", e)
         };
+         */
 
         // Start running the machine state in the `Paused` state.
         StateMachine::run(self, Self::paused);
@@ -289,15 +292,18 @@ impl Vcpu {
     fn running(&mut self) -> StateMachine<Self> {
         // This loop is here just for optimizing the emulation path.
         // No point in ticking the state machine if there are no external events.
-        /*
-         * We set up the handshake with the oracle here
-         */
+        let mut snap_time: bool = false;
         loop {
             match self.run_emulation() {
                 // Emulation ran successfully, continue.
                 Ok(VcpuEmulation::Handled) => (),
                 // Emulation was interrupted, check external events.
                 Ok(VcpuEmulation::Interrupted) => break,
+                // Emulation was interrupted to take snapshot.
+                Ok(VcpuEmulation::Snapshot) => {
+                    snap_time = true;
+                    break;
+                }
                 // If the guest was rebooted or halted:
                 // - vCPU0 will always exit out of `KVM_RUN` with KVM_EXIT_SHUTDOWN or KVM_EXIT_HLT.
                 // - the other vCPUs won't ever exit out of `KVM_RUN`, but they won't consume CPU.
@@ -312,6 +318,11 @@ impl Vcpu {
 
         // By default don't change state.
         let mut state = StateMachine::next(Self::running);
+
+        if snap_time == true {
+            log_jaeger_warning("running", "Switching to paused state");
+            state = StateMachine::next(Self::paused);
+        }
 
         // Break this emulation loop on any transition request/external event.
         match self.event_receiver.try_recv() {
@@ -356,6 +367,7 @@ impl Vcpu {
 
     // This is the main loop of the `Paused` state.
     fn paused(&mut self) -> StateMachine<Self> {
+        log_jaeger_warning("paused", "Here");
         match self.event_receiver.recv() {
             // Paused ---- Resume ----> Running
             Ok(VcpuEvent::Resume) => {
@@ -373,6 +385,7 @@ impl Vcpu {
                 StateMachine::next(Self::paused)
             }
             Ok(VcpuEvent::SaveState) => {
+                log_jaeger_warning("paused", "Received save state");
                 // Save vcpu state.
                 self.kvm_vcpu
                     .save_state()
@@ -537,9 +550,9 @@ impl Vcpu {
                     );
                     /*
                      * Now I need to call the oracle with this RIP
-                     */
                     let fix_bytes: [u8; BP_LEN] = send_breakpoint_event(regs.rip, phys_addr);
-                    // let fix_bytes: [u8; BP_LEN] = [0x90];
+                     */
+                    let fix_bytes: [u8; BP_LEN] = [0x90];
                     /*
                      * And unmodify the instruction at this address
                      */
@@ -558,7 +571,7 @@ impl Vcpu {
                      */
                     regs.rip = regs.rip + 1;
                     match self.kvm_vcpu.set_regs(regs) {
-                        Ok(()) => Ok(VcpuEmulation::Handled),
+                        Ok(()) => Ok(VcpuEmulation::Snapshot),
                         Err(e) => {
                             log_jaeger_warning(
                                 "run_emulation", 
@@ -719,6 +732,7 @@ pub enum VcpuEmulation {
     Interrupted,
     Stopped,
     Crashed,
+    Snapshot,
 }
 
 #[cfg(test)]
