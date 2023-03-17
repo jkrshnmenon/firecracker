@@ -1,3 +1,5 @@
+use std::io::BufReader;
+use std::io::BufRead;
 use std::net::{TcpStream};
 use std::io::{Read, Write};
 // use std::str::from_utf8;
@@ -25,6 +27,7 @@ fn send_message(msg: &str) -> std::io::Result<()> {
     }
 }
 
+/*
 /// Wrapper for receiving messages from Oracle
 fn recv_message(size: usize) -> std::io::Result<Vec<u8>> {
     unsafe {
@@ -39,6 +42,25 @@ fn recv_message(size: usize) -> std::io::Result<Vec<u8>> {
         }
     }
 }
+*/
+
+/// Wrapper for reading a line from Oracle
+fn recvline() -> std::io::Result<String> {
+    unsafe {
+        let stream = STREAM.as_ref().unwrap();
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        let result = reader.read_line(&mut line);
+        match result {
+            Ok(_) => Ok(line.trim().to_string()),
+            Err(e) => {
+                println!("Error reading from server: {}", e);
+                Err(e)
+            }
+        }
+    }
+}
+
 
 /// This function will be called by the `running` function in Vcpu
 /// This function is supposed to set up the connection with Oracle
@@ -67,8 +89,12 @@ pub fn send_breakpoint_event(pc_addr: u64, phys_addr: u64) -> [u8; BP_LEN] {
         Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
         Err(e) => panic!("{}", e)
     };
-    match recv_message(BP_LEN) {
-        Ok(data) => data.try_into().unwrap(),
-        Err(e) => panic!("{}", e)
+    let mut values: [u8; BP_LEN] = [0; BP_LEN];
+    for i in 0..BP_LEN {
+        match recvline() {
+            Ok(data) => values[i] = data.parse::<u8>().unwrap(),
+            Err(e) => println!("Could not decode: {}", e)
+        };
     }
+    values
 }
