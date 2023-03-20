@@ -1,7 +1,10 @@
 use std::io::BufReader;
 use std::io::BufRead;
 use std::net::{TcpStream};
-use std::io::{Read, Write};
+use std::io::{
+    //Read, 
+    Write
+};
 // use std::str::from_utf8;
 
 /// We use this variable to identify the length of the breakpoint instruction
@@ -83,11 +86,18 @@ pub fn init_handshake() -> std::io::Result<()> {
 /// This function is used to inform the Oracle of a breakpoint event
 /// The address of the current RIP and the physical address will be sent to the Oracle
 /// The Oracle will send us the bytes that should be replaced
-pub fn send_breakpoint_event(pc_addr: u64, phys_addr: u64) -> [u8; BP_LEN] {
+pub fn send_breakpoint_event(pc_addr: u64, phys_addr: u64) -> (bool, [u8; BP_LEN]) {
     let msg = format!("{:#016x}:{:#016x}\n", pc_addr, phys_addr);
     match send_message(&msg) {
         Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
         Err(e) => panic!("{}", e)
+    };
+    let snap_time: bool =  match recvline() {
+        Ok(data) => data.trim().parse::<bool>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            false
+        }
     };
     let mut values: [u8; BP_LEN] = [0; BP_LEN];
     for i in 0..BP_LEN {
@@ -96,5 +106,5 @@ pub fn send_breakpoint_event(pc_addr: u64, phys_addr: u64) -> [u8; BP_LEN] {
             Err(e) => println!("Could not decode: {}", e)
         };
     }
-    values
+    (snap_time, values)
 }
