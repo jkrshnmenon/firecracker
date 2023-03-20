@@ -16,11 +16,11 @@ use std::{fmt, io, result, thread};
 use kvm_bindings::{KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN};
 use kvm_ioctls::VcpuExit;
 use libc::{c_int, c_void, siginfo_t};
-use logger::{error, info, IncMetric, METRICS, log_jaeger_warning,
-    //log_jaeger_warning
+use logger::{error, info, IncMetric, METRICS, 
+    log_jaeger_warning
 };
 use oracle:: {
-    BP_LEN,
+//     BP_LEN,
     init_handshake,
     send_breakpoint_event,
 };
@@ -278,11 +278,11 @@ impl Vcpu {
 
         /*
          * We set up the handshake with the oracle here
+         */
         match init_handshake() {
             Ok(()) => log_jaeger_warning("running", "Connected to oracle"),
             Err(e) => panic!("Could not connect to oracle: {}", e)
         };
-         */
 
         // Start running the machine state in the `Paused` state.
         StateMachine::run(self, Self::paused);
@@ -550,9 +550,9 @@ impl Vcpu {
                     );
                     /*
                      * Now I need to call the oracle with this RIP
-                    let fix_bytes: [u8; BP_LEN] = send_breakpoint_event(regs.rip, phys_addr);
                      */
-                    let fix_bytes: [u8; BP_LEN] = [0x90];
+                    let (snap_time, fix_bytes) = send_breakpoint_event(regs.rip, phys_addr);
+                    // let fix_bytes: [u8; BP_LEN] = [0x90];
                     /*
                      * And unmodify the instruction at this address
                      */
@@ -571,7 +571,12 @@ impl Vcpu {
                      */
                     regs.rip = regs.rip + 1;
                     match self.kvm_vcpu.set_regs(regs) {
-                        Ok(()) => Ok(VcpuEmulation::Snapshot),
+                        Ok(()) => {
+                            match snap_time {
+                                true => Ok(VcpuEmulation::Snapshot),
+                                false => Ok(VcpuEmulation::Handled)
+                            }
+                        },
                         Err(e) => {
                             log_jaeger_warning(
                                 "run_emulation", 
