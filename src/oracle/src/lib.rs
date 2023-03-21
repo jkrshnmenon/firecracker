@@ -106,5 +106,6 @@ pub fn send_breakpoint_event(pc_addr: u64, phys_addr: u64) -> (bool, [u8; BP_LEN
             Err(e) => println!("Could not decode: {}", e)
         };
     }
+    println!("Received values: {:?}", values);
     (snap_time, values)
 }
