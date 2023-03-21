@@ -320,7 +320,7 @@ impl Vcpu {
         let mut state = StateMachine::next(Self::running);
 
         if snap_time == true {
-            log_jaeger_warning("running", "Switching to paused state");
+            // log_jaeger_warning("running", "Switching to paused state");
             state = StateMachine::next(Self::paused);
         }
 
@@ -367,7 +367,7 @@ impl Vcpu {
 
     // This is the main loop of the `Paused` state.
     fn paused(&mut self) -> StateMachine<Self> {
-        log_jaeger_warning("paused", "Here");
+        // log_jaeger_warning("paused", "Here");
         match self.event_receiver.recv() {
             // Paused ---- Resume ----> Running
             Ok(VcpuEvent::Resume) => {
@@ -385,7 +385,7 @@ impl Vcpu {
                 StateMachine::next(Self::paused)
             }
             Ok(VcpuEvent::SaveState) => {
-                log_jaeger_warning("paused", "Received save state");
+                // log_jaeger_warning("paused", "Received save state");
                 // Save vcpu state.
                 self.kvm_vcpu
                     .save_state()
@@ -569,7 +569,7 @@ impl Vcpu {
                     /*
                      * Reset the RIP and continue execution
                      */
-                    regs.rip = regs.rip + 1;
+                    regs.rip = regs.rip;
                     match self.kvm_vcpu.set_regs(regs) {
                         Ok(()) => {
                             match snap_time {
