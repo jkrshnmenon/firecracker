@@ -398,6 +398,8 @@ impl KvmVcpu {
         let mut ret = 0;
         if translation.valid == 1 {
             ret = translation.physical_address;
+        } else {
+            panic!("Translation invalid");
         }
         ret
     }
