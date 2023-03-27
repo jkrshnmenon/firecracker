@@ -395,13 +395,11 @@ impl KvmVcpu {
     /// Translate a virtual address to physical address in the guest
     pub fn guest_virt_to_phys(&self, address: u64) -> u64 {
         let translation = self.fd.translate_gva(address).unwrap();
-        let mut ret = 0;
         if translation.valid == 1 {
-            ret = translation.physical_address;
+            translation.physical_address as u64
         } else {
             panic!("Translation invalid");
         }
-        ret
     }
 
     /// Get the current TSC frequency for this vCPU.
