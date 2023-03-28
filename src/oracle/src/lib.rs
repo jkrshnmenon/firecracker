@@ -155,10 +155,10 @@ pub fn get_offsets() -> Vec<u64> {
 
 /// The address of the current RIP and the physical address will be sent to the Oracle
 /// The Oracle will send us the bytes that should be replaced
-pub fn get_bytes(pc_addr: u64, phys_addr: u64) -> [u8; BP_LEN] {
-    let msg = format!("{:#016x}:{:#016x}\n", pc_addr, phys_addr);
+pub fn get_bytes() -> [u8; BP_LEN] {
+    let msg = format!("BYTES\n");
     match send_message(&msg) {
-        Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
+        Ok(()) => println!("Sent message: BYTES"),
         Err(e) => panic!("{}", e)
     };
     let mut values: [u8; BP_LEN] = [0; BP_LEN];

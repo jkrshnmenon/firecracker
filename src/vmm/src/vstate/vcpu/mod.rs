@@ -621,7 +621,7 @@ impl Vcpu {
                                      * Now that we've modified all the offsets, we need to unmodify the current one
                                      * And continue
                                      */
-                                    let fix_bytes = get_bytes(regs.rip, phys_addr);
+                                    let fix_bytes = get_bytes();
                                     gm.write_slice(&fix_bytes, GuestAddress(phys_addr))
                                         .expect("Failed to write slice");
                                 },
@@ -632,7 +632,7 @@ impl Vcpu {
                             Ok(VcpuEmulation::Handled)
                         },
                         UNMODIFY => {
-                            let fix_bytes = get_bytes(regs.rip, phys_addr);
+                            let fix_bytes = get_bytes();
                             match &self.kvm_vcpu.guest_memory_map {
                                 Some(gm) => {
                                     gm.write_slice(&fix_bytes, GuestAddress(phys_addr))
