@@ -23,6 +23,7 @@ use oracle:: {
 //     BP_LEN,
     BP_BYTES,
     INIT, EXEC, EXIT, MODIFY, UNMODIFY,
+    HANDLED, STOPPED, CRASHED,
     init_handshake,
     handle_kvm_exit_debug,
     notify_exec,
@@ -597,13 +598,22 @@ impl Vcpu {
                                     gm.read_slice(buf, GuestAddress(str_addr))
                                         .expect("Failed to read string");
                                     let prog_path = from_utf8(buf).unwrap();
-                                    notify_exit(prog_path, exit_code);
+                                    let ret = notify_exit(prog_path, exit_code);
+                                    // TODO: 
+                                    // Oracle will let us know if we need to return
+                                    // Handled, Stopped or Crashed
+                                    match ret {
+                                        HANDLED => Ok(VcpuEmulation::Handled),
+                                        STOPPED => Ok(VcpuEmulation::Stopped),
+                                        CRASHED => Ok(VcpuEmulation::Crashed),
+                                        _ => Ok(VcpuEmulation::Handled)
+                                    }
                                 },
                                 None => {
                                     log_jaeger_warning("run_emulation", "No memory map");
+                                    Ok(VcpuEmulation::Handled)
                                 }
-                            };
-                            Ok(VcpuEmulation::Handled)
+                            }
                         },
                         MODIFY => {
                             /*
