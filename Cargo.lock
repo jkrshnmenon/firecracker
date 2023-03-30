@@ -838,6 +838,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "logger",
+ "vm-memory 0.3.0",
 ]
 
 [[package]]
