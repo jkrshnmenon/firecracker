@@ -24,6 +24,7 @@ use oracle:: {
     BP_BYTES,
     INIT, EXEC, EXIT, MODIFY, UNMODIFY,
     HANDLED, STOPPED, CRASHED,
+    pagewalk,
     init_handshake,
     handle_kvm_exit_debug,
     notify_exec,
@@ -31,13 +32,13 @@ use oracle:: {
     get_offsets,
     get_bytes,
 };
+use vm_memory::{GuestAddress, Bytes};
 use std::str::from_utf8;
 use seccompiler::{BpfProgram, BpfProgramRef};
 use utils::errno;
 use utils::eventfd::EventFd;
 use utils::signal::{register_signal_handler, sigrtmin, Killable};
 use utils::sm::StateMachine;
-use vm_memory::{GuestAddress, Bytes};
 
 use crate::vmm_config::machine_config::CpuFeaturesTemplate;
 use crate::vstate::vm::Vm;
@@ -551,11 +552,24 @@ impl Vcpu {
                 VcpuExit::Debug(_arch) => {
                     let mut regs = self.kvm_vcpu.get_regs().unwrap();
                     let sregs = self.kvm_vcpu.get_sregs().unwrap();
-                    let phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
+                    let mut phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
+
+                    if phys_addr == 0 {
+                        // Fuck it, we'll walk the page tables
+                        match &self.kvm_vcpu.guest_memory_map {
+                            Some(gm) => {
+                                phys_addr = pagewalk(gm.clone(), regs.rip, sregs.cr3);
+                            },
+                            None => {
+                                log_jaeger_warning("run_emulation", "No memory map");
+                            }
+                        }
+                    };
+
                     log_jaeger_warning(
                         "run_emulation",
-                        format!("KVM_EXIT_DEBUG: RIP = {:#016x} | Physical RIP = {:#016x}",
-                           regs.rip, phys_addr).as_str()
+                        format!("KVM_EXIT_DEBUG: RIP = {:#016x} | Physical RIP = {:#016x} | CR3 = {:#016x}",
+                           regs.rip, phys_addr, sregs.cr3).as_str()
                     );
 
                     match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3) {
@@ -675,7 +689,10 @@ impl Vcpu {
                             Ok(VcpuEmulation::Stopped)
                         }
                     }
-                }
+                    /*
+                    Ok(VcpuEmulation::Stopped)
+                    */
+                },
                 arch_specific_reason => {
                     // run specific architecture emulation.
                     self.kvm_vcpu.run_arch_emulation(arch_specific_reason)
