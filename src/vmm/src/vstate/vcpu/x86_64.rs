@@ -398,7 +398,7 @@ impl KvmVcpu {
         if translation.valid == 1 {
             translation.physical_address as u64
         } else {
-            panic!("Translation invalid");
+            0 as u64
         }
     }
 
