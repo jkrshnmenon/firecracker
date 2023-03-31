@@ -276,14 +276,18 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
             assert!(DOJOSNOOP_EXEC.is_none(), "dojosnoop_exec isn't None");
             DOJOSNOOP_CR3 = Some(cr3);
             DOJOSNOOP_EXEC = Some(rip);
+            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}", cr3, rip).as_str());
             return INIT;
         } else if DOJOSNOOP_EXIT.is_none() {
+            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] EXIT = {:#016x}", rip).as_str());
             DOJOSNOOP_EXIT = Some(rip);
             return INIT;
         } else if DOJOSNOOP_CR3 == Some(cr3) {
             if DOJOSNOOP_EXEC == Some(rip) {
+                log_jaeger_warning("handle_kvm_exit_debug", format!("EXEC = {:#016x}", rip).as_str());
                 return EXEC;
             } else if DOJOSNOOP_EXIT == Some(rip) {
+                log_jaeger_warning("handle_kvm_exit_debug", format!("EXIT = {:#016x}", rip).as_str());
                 return EXIT;
             }
         }
