@@ -581,13 +581,19 @@ impl Vcpu {
                              */
                             // This should be invoked by the dojosnoop_exec handler.
                             // The string containing the program path should be in RDI.
-                            let str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
                             match &self.kvm_vcpu.guest_memory_map {
                                 Some(gm) => {
+                                    if str_addr == 0 {
+                                        str_addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                    }
                                     let buf = &mut [0u8; 100];
                                     gm.read_slice(buf, GuestAddress(str_addr))
                                         .expect("Failed to read string");
-                                    let prog_path = from_utf8(buf).unwrap();
+                                    let end = buf.iter()
+                                        .position(|&c| c == b'\0')
+                                        .unwrap_or(buf.len());
+                                    let prog_path = from_utf8(&buf[0..end]).unwrap();
                                     notify_exec(prog_path);
                                 },
                                 None => {
@@ -603,15 +609,21 @@ impl Vcpu {
                              */
                             // This should be invoked by the dojosnoop_exec handler.
                             // The string containing the program path should be in RDI.
-                            let str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
                             // The exit code should be in rsi
                             let exit_code: u64 = regs.rsi as u64;
                             match &self.kvm_vcpu.guest_memory_map {
                                 Some(gm) => {
+                                    if str_addr == 0 {
+                                        str_addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                    }
                                     let buf = &mut [0u8; 100];
                                     gm.read_slice(buf, GuestAddress(str_addr))
                                         .expect("Failed to read string");
-                                    let prog_path = from_utf8(buf).unwrap();
+                                    let end = buf.iter()
+                                        .position(|&c| c == b'\0')
+                                        .unwrap_or(buf.len());
+                                    let prog_path = from_utf8(&buf[0..end]).unwrap();
                                     let ret = notify_exit(prog_path, exit_code);
                                     // TODO: 
                                     // Oracle will let us know if we need to return
