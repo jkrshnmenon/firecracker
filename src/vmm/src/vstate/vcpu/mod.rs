@@ -573,7 +573,21 @@ impl Vcpu {
                     );
 
                     match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3) {
-                        INIT => Ok(VcpuEmulation::Handled),
+                        INIT => {
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    Ok(VcpuEmulation::Handled)
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
+                        }
                         EXEC => {
                             /*
                              * Need to get the path to the program here.
@@ -600,7 +614,19 @@ impl Vcpu {
                                     log_jaeger_warning("run_emulation", "No memory map");
                                 }
                             };
-                            Ok(VcpuEmulation::Handled)
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    Ok(VcpuEmulation::Handled)
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
                         },
                         EXIT => {
                             /*
@@ -612,7 +638,7 @@ impl Vcpu {
                             let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
                             // The exit code should be in rsi
                             let exit_code: u64 = regs.rsi as u64;
-                            match &self.kvm_vcpu.guest_memory_map {
+                            let ret = match &self.kvm_vcpu.guest_memory_map {
                                 Some(gm) => {
                                     if str_addr == 0 {
                                         str_addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
@@ -624,10 +650,18 @@ impl Vcpu {
                                         .position(|&c| c == b'\0')
                                         .unwrap_or(buf.len());
                                     let prog_path = from_utf8(&buf[0..end]).unwrap();
-                                    let ret = notify_exit(prog_path, exit_code);
-                                    // TODO: 
                                     // Oracle will let us know if we need to return
                                     // Handled, Stopped or Crashed
+                                    notify_exit(prog_path, exit_code)
+                                },
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                    0x1337
+                                }
+                            };
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
                                     match ret {
                                         HANDLED => Ok(VcpuEmulation::Handled),
                                         STOPPED => Ok(VcpuEmulation::Stopped),
@@ -635,9 +669,12 @@ impl Vcpu {
                                         _ => Ok(VcpuEmulation::Handled)
                                     }
                                 },
-                                None => {
-                                    log_jaeger_warning("run_emulation", "No memory map");
-                                    Ok(VcpuEmulation::Handled)
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
                                 }
                             }
                         },
