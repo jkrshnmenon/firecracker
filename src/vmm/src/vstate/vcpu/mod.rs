@@ -319,7 +319,7 @@ impl Vcpu {
                 // So we pause vCPU0 and send a signal to the emulation thread to stop the VMM.
                 Ok(VcpuEmulation::Stopped) => return self.exit(FcExitCode::Ok),
                 // We found a crash
-                Ok(VcpuEmulation::Crashed) => return self.exit(FcExitCode::GenericError),
+                Ok(VcpuEmulation::Crashed) => return self.exit(FcExitCode::SIGSEGV),
                 // Emulation errors lead to vCPU exit.
                 Err(_) => return self.exit(FcExitCode::GenericError),
             }
