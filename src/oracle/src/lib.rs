@@ -259,7 +259,12 @@ pub fn get_offsets() -> Vec<u64> {
     let mut values: Vec<u64> = Vec::new();
     loop {
         match recvline() {
-            Ok(data) => values.push(data.parse::<u64>().unwrap()),
+            Ok(data) => {
+                match data.parse::<u64>() {
+                    Ok(x) => values.push(x),
+                    Err(_e) => break,
+                }
+            },
             Err(e) => {
                 println!("Could not decode: {}", e);
                 break;
