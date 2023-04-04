@@ -191,6 +191,7 @@ pub fn init_handshake() -> std::io::Result<()> {
         match TcpStream::connect(format!("{}:{}", ORACLE_IP, ORACLE_PORT)) {
             Ok(stream) => {
                 STREAM = Some(stream);
+                let _flag = get_init();
                 Ok(())
             }
             Err(e) => {
@@ -280,12 +281,82 @@ pub fn get_bytes() -> [u8; BP_LEN] {
     let mut values: [u8; BP_LEN] = [0; BP_LEN];
     for i in 0..BP_LEN {
         match recvline() {
-            Ok(data) => values[i] = data.parse::<u8>().unwrap(),
+            Ok(data) => {
+                match data.parse::<u8>() {
+                    Ok(x) => {values[i] = x},
+                    Err(_e) => break
+                }
+            },
             Err(e) => println!("Could not decode: {}", e)
         };
     }
-    println!("Received values: {:?}", values);
+    // println!("Received values: {:?}", values);
     values
+}
+
+
+/// We will try to request the DOJOSNOOP variables from the oracle
+/// Returns true if we got all three variables
+/// false otherwise
+pub fn get_init() -> bool {
+    let msg = format!("INIT:0x0:0x0:0x0\n");
+    match send_message(&msg) {
+        Ok(()) => println!("Sent message: INIT"),
+        Err(e) => panic!("{}", e)
+    };
+    let mut values: [u64; 3] = [0; 3];
+    for i in 0..3 {
+        match recvline() {
+            Ok(data) => values[i] = data.parse::<u64>().unwrap(),
+            Err(e) => println!("Could not decode: {}", e)
+        };
+    }
+    // println!("Received values: {:?}", values);
+    let mut flag: bool = true;
+    for i in values {
+        if i == 0 {
+            flag = false;
+            break;
+        }
+    }
+    if flag == true {
+        // println!("Updating dojosnoop variables");
+        unsafe {
+            DOJOSNOOP_CR3 = Some(values[0]);
+            DOJOSNOOP_EXEC = Some(values[1]);
+            DOJOSNOOP_EXIT = Some(values[2]);
+        }
+        // log_jaeger_warning("get_init", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}\tEXIT = {:#016x}",
+        // values[0], values[1], values[2]).as_str());
+    }
+    flag
+}
+
+
+/// Send the DOJOSNOOP variables to oracle
+fn send_init() {
+    log_jaeger_warning("send_init", "Sending DOJOSNOOP to oracle");
+    let msg = unsafe {
+        format!("INIT:{:#016x}:{:#016x}:{:#016x}\n",
+            DOJOSNOOP_CR3.clone().unwrap(),
+            DOJOSNOOP_EXEC.clone().unwrap(),
+            DOJOSNOOP_EXIT.clone().unwrap()
+        )
+    };
+    match send_message(&msg) {
+        Ok(()) => println!("Sent message: INIT"),
+        Err(e) => panic!("{}", e)
+    };
+    let mut values: [u64; 3] = [0; 3];
+    for i in 0..3 {
+        match recvline() {
+            Ok(data) => values[i] = {
+                data.parse::<u64>().unwrap()
+            },
+            Err(e) => println!("Could not decode: {}", e)
+        };
+    }
+    // println!("Received values: {:?}", values);
 }
 
 
