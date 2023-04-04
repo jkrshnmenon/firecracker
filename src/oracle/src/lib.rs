@@ -271,7 +271,7 @@ pub fn get_offsets() -> Vec<u64> {
             }
         };
     }
-    println!("Received values: {:?}", values);
+    // println!("Received values: {:?}", values);
     values
 }
 
@@ -392,7 +392,7 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
     // We've already initialized all the required variables.
     // Handle this situation properly now
     let is_first = notify_oracle(rip, phys_addr, cr3);
-    if is_first == false {
+    if is_first == true {
         // If we get here, it means that we've hit the breakpoint injected into
         // the entry point of the current program.
         // Tell FC that we need to modify the program
