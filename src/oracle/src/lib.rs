@@ -7,10 +7,11 @@ use vm_memory::{GuestMemoryMmap, GuestAddress, Bytes};
 use logger::log_jaeger_warning;
 
 pub const INIT:u64 = 0;
-pub const EXEC:u64 = 1;
-pub const EXIT:u64 = 2;
-pub const MODIFY:u64 = 3;
-pub const UNMODIFY:u64 = 4;
+pub const INIT_COMPLETE:u64 = 1;
+pub const EXEC:u64 = 2;
+pub const EXIT:u64 = 3;
+pub const MODIFY:u64 = 4;
+pub const UNMODIFY:u64 = 5;
 
 pub const HANDLED:u64 = 0;
 pub const STOPPED:u64 = 1;
@@ -299,7 +300,8 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
         } else if DOJOSNOOP_EXIT.is_none() {
             log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] EXIT = {:#016x}", rip).as_str());
             DOJOSNOOP_EXIT = Some(rip);
-            return INIT;
+            send_init();
+            return INIT_COMPLETE;
         } else if DOJOSNOOP_CR3 == Some(cr3) {
             if DOJOSNOOP_EXEC == Some(rip) {
                 log_jaeger_warning("handle_kvm_exit_debug", format!("EXEC = {:#016x}", rip).as_str());
