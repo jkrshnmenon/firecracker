@@ -22,7 +22,7 @@ use logger::{error, info, IncMetric, METRICS,
 use oracle:: {
 //     BP_LEN,
     BP_BYTES,
-    INIT, EXEC, EXIT, MODIFY, UNMODIFY,
+    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
     init_handshake,
@@ -587,7 +587,23 @@ impl Vcpu {
                                     Ok(VcpuEmulation::Stopped)
                                 }
                             }
-                        }
+                        },
+                        INIT_COMPLETE => {
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    // If we've finished intialization, we can take a snapshot
+                                    Ok(VcpuEmulation::Snapshot)
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
+                        },
                         EXEC => {
                             /*
                              * Need to get the path to the program here.
