@@ -1,8 +1,6 @@
-use std::io::BufReader;
-use std::io::BufRead;
 use std::net::{TcpStream};
 use std::io::{
-    //Read, 
+    Read, 
     Write
 };
 use vm_memory::{GuestMemoryMmap, GuestAddress, Bytes};
@@ -147,21 +145,41 @@ fn recv_message(size: usize) -> std::io::Result<Vec<u8>> {
 }
 */
 
-/// Wrapper for reading a line from Oracle
-fn recvline() -> std::io::Result<String> {
+// Wrapper for receiving one byte from Oracle
+fn recv_byte() -> std::io::Result<u8> {
     unsafe {
-        let stream = STREAM.as_ref().unwrap();
-        let mut reader = BufReader::new(stream);
-        let mut line = String::new();
-        let result = reader.read_line(&mut line);
-        match result {
-            Ok(_) => Ok(line.trim().to_string()),
+        let mut stream = STREAM.as_ref().unwrap();
+        let mut msg: [u8; 1] = [0];     
+        match stream.read_exact(&mut msg) {
+            Ok(_) => Ok(msg[0]),            
             Err(e) => {
                 println!("Error reading from server: {}", e);
                 Err(e)
             }
         }
     }
+}
+
+
+/// Wrapper for reading one line from Oracle
+fn recvline() -> std::io::Result<String> {
+    let mut data: Vec<u8> = Vec::new(); 
+    loop {
+        match recv_byte() {
+            Ok(byte) => {
+                match byte == 10 {              
+                    true => break,                  
+                    false => data.push(byte)        
+                };
+            },
+            Err(e) => {
+                println!("Error reading from server: {}", e);
+            }
+        };
+    };
+    let s = String::from_utf8(data).expect("Found invalid UTF-8");
+    // println!("Received line: {:?}", s);
+    Ok(s)
 }
 
 
