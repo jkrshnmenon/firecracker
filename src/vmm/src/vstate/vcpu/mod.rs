@@ -572,7 +572,7 @@ impl Vcpu {
                            regs.rip, phys_addr, sregs.cr3).as_str()
                     );
 
-                    match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3) {
+                    match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3 & !(0xfff)) {
                         INIT => {
                             regs.rip = regs.rip + 1;
                             match self.kvm_vcpu.set_regs(regs) {
