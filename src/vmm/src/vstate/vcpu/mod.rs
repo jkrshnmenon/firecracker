@@ -470,6 +470,7 @@ impl Vcpu {
                 break;
             }
         }
+        log_jaeger_warning("exit", "Calling finish");
         StateMachine::finish()
     }
 

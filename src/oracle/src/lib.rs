@@ -164,6 +164,7 @@ fn recv_byte() -> std::io::Result<u8> {
 
 /// Wrapper for reading one line from Oracle
 fn recvline() -> std::io::Result<String> {
+    log_jaeger_warning("recvline", "Reading line");
     let mut data: Vec<u8> = Vec::new(); 
     loop {
         match recv_byte() {
@@ -180,6 +181,7 @@ fn recvline() -> std::io::Result<String> {
     };
     let s = String::from_utf8(data).expect("Found invalid UTF-8");
     // println!("Received line: {:?}", s);
+    log_jaeger_warning("recvline", "Finished");
     Ok(s)
 }
 
@@ -263,8 +265,10 @@ pub fn get_offsets() -> Vec<u64> {
         Ok(()) => println!("Sent message: REQ"),
         Err(e) => panic!("{}", e)
     };
+    log_jaeger_warning("get_offsets", "Getting values");
     let mut values: Vec<u64> = Vec::new();
     loop {
+        log_jaeger_warning("get_offsets", "loop getting values");
         match recvline() {
             Ok(data) => {
                 match data.parse::<u64>() {
