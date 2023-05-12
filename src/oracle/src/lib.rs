@@ -207,11 +207,13 @@ pub fn init_handshake() -> std::io::Result<()> {
 /// This function is used to inform the Oracle of a breakpoint event
 /// Oracle will let us know if this is the entrypoint
 pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> bool {
+    log_jaeger_warning("notify_oracle", "Notifying");
     let msg = format!("{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3);
     match send_message(&msg) {
         Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
         Err(e) => panic!("{}", e)
     };
+    log_jaeger_warning("notify_oracle", "reading line");
     let is_first: bool =  match recvline() {
         Ok(data) => data.trim().parse::<bool>().unwrap(),
         Err(e) => {
@@ -219,6 +221,7 @@ pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> bool {
             false
         }
     };
+    log_jaeger_warning("notify_oracle", "Finished");
     is_first
 }
 
@@ -233,24 +236,28 @@ pub fn notify_exec(prog_path: &str) {
 
 
 pub fn notify_exit(prog_path: &str, exit_code: u64) -> u64 {
+    log_jaeger_warning("notify_exit", "Notifying");
     let msg = format!("EXIT:{}={}\n", prog_path, exit_code);
     match send_message(&msg) {
         Ok(()) => println!("Sent exit code: {}", exit_code),
         Err(e) => panic!("{}", e)
     };
     let mut ret:u64 = HANDLED;
+    log_jaeger_warning("notify_exit", "reading line");
     match recvline() {
         Ok(data) => {ret = data.parse::<u64>().unwrap()},
         Err(e) => {
             println!("Could not decode: {}", e);
         }
     };
+    log_jaeger_warning("notify_exit", "Finished");
     ret
 }
 
 
 /// The Oracle will send us the physical addresses for the program
 pub fn get_offsets() -> Vec<u64> {
+    log_jaeger_warning("get_offsets", "Getting REQ");
     let msg = format!("REQ\n");
     match send_message(&msg) {
         Ok(()) => println!("Sent message: REQ"),
@@ -272,12 +279,14 @@ pub fn get_offsets() -> Vec<u64> {
         };
     }
     // println!("Received values: {:?}", values);
+    log_jaeger_warning("get_offsets", "Finished");
     values
 }
 
 /// The address of the current RIP and the physical address will be sent to the Oracle
 /// The Oracle will send us the bytes that should be replaced
 pub fn get_bytes() -> [u8; BP_LEN] {
+    log_jaeger_warning("get_bytes", "Getting BYTES");
     let msg = format!("BYTES\n");
     match send_message(&msg) {
         Ok(()) => println!("Sent message: BYTES"),
@@ -296,6 +305,7 @@ pub fn get_bytes() -> [u8; BP_LEN] {
         };
     }
     // println!("Received values: {:?}", values);
+    log_jaeger_warning("get_bytes", "Finished");
     values
 }
 
@@ -396,10 +406,12 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
         // If we get here, it means that we've hit the breakpoint injected into
         // the entry point of the current program.
         // Tell FC that we need to modify the program
+        log_jaeger_warning("handle_kvm_exit_debug", format!("MODIFY = {:#016x}", rip).as_str());
         return MODIFY;
     } else {
         // If we get here, it means that we've hit an injected breakpoint
         // Tell FC that we need to unmodify
+        log_jaeger_warning("handle_kvm_exit_debug", format!("UNMODIFY = {:#016x}", rip).as_str());
         return UNMODIFY;
     }
 }
