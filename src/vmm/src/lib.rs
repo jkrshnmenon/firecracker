@@ -52,7 +52,9 @@ use devices::virtio::{
 };
 use devices::BusDevice;
 use event_manager::{EventManager as BaseEventManager, EventOps, Events, MutEventSubscriber};
-use logger::{error, info, warn, LoggerError, MetricsError, METRICS};
+use logger::{error, info, warn, LoggerError, MetricsError, METRICS,
+    log_jaeger_warning
+};
 use rate_limiter::BucketUpdate;
 use seccompiler::BpfProgram;
 use snapshot::Persist;
@@ -783,6 +785,7 @@ impl Vmm {
         // Once `vmm.shutdown_exit_code` becomes `Some(exit_code)`, it is the upper layer's
         // responsibility to break main event loop and propagate the exit code value.
         info!("Vmm is stopping.");
+        log_jaeger_warning("stop", "Vmm is stopping.");
 
         // We send a "Finish" event.  If a VCPU has already exited, this is the only
         // message it will accept... but running and paused will take it as well.
@@ -792,11 +795,13 @@ impl Vmm {
                 error!("Failed to send VcpuEvent::Finish to vCPU {}: {}", idx, err);
             }
         }
+        log_jaeger_warning("stop", "Sent events");
         // The actual thread::join() that runs to release the thread's resource is done in
         // the VcpuHandle's Drop trait.  We can trigger that to happen now by clearing the
         // list of handles. Do it here instead of Vmm::Drop to avoid dependency cycles.
         // (Vmm's Drop will also check if this list is empty).
         self.vcpus_handles.clear();
+        log_jaeger_warning("stop", "cleared handles");
 
         // Break the main event loop, propagating the Vmm exit-code.
         self.shutdown_exit_code = Some(exit_code);

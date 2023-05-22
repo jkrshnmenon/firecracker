@@ -11,7 +11,9 @@ use std::thread;
 
 use api_server::{ApiRequest, ApiResponse, ApiServer, ServerError};
 use event_manager::{EventOps, Events, MutEventSubscriber, SubscriberOps};
-use logger::{error, warn, ProcessTimeReporter};
+use logger::{error, warn, ProcessTimeReporter,
+    log_jaeger_warning,
+};
 use seccompiler::BpfThreadMap;
 use utils::epoll::EventSet;
 use utils::eventfd::EventFd;
@@ -255,6 +257,7 @@ pub(crate) fn run_with_api(
     if socket_ready_receiver.recv() == Ok(true) {
         // "sock" var is declared outside of this "if" scope so that the socket's fd stays
         // alive until all bytes are sent through; otherwise fd will close before being flushed.
+        log_jaeger_warning("run_with_api", "Sending PUT");
         sock = UnixStream::connect(bind_path).unwrap();
         sock.write_all(b"PUT /shutdown-internal HTTP/1.1\r\n\r\n")
             .unwrap();
@@ -262,5 +265,6 @@ pub(crate) fn run_with_api(
     // This call to thread::join() should block until the API thread has processed the
     // shutdown-internal and returns from its function.
     api_thread.join().unwrap();
+    log_jaeger_warning("run_with_api", "Join threads complete");
     exit_code
 }
