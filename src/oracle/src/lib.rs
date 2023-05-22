@@ -1,8 +1,10 @@
-use std::net::{TcpStream};
+// use std::net::{TcpStream};
+use std::os::unix::net::UnixStream;
 use std::io::{
     Read, 
     Write
 };
+use std::process;
 use vm_memory::{GuestMemoryMmap, GuestAddress, Bytes};
 use logger::log_jaeger_warning;
 
@@ -36,8 +38,10 @@ pub const BP_BYTES: [u8; BP_LEN] = [0xcc];
 
 const ORACLE_IP: &str = "localhost";
 const ORACLE_PORT: i32 = 31337;
+const ORACLE_SOCKET: &str = "/tmp/FC_SOCK";
 
-static mut STREAM: Option<TcpStream> = None;
+// static mut STREAM: Option<TcpStream> = None;
+static mut STREAM: Option<UnixStream> = None;
 
 
 fn get_virt_indicies(addr: u64) -> (u64, u64, u64, u64) {
@@ -190,7 +194,7 @@ fn recvline() -> std::io::Result<String> {
 /// This function is supposed to set up the connection with Oracle
 pub fn init_handshake() -> std::io::Result<()> {
     unsafe { 
-        match TcpStream::connect(format!("{}:{}", ORACLE_IP, ORACLE_PORT)) {
+        match UnixStream::connect(ORACLE_SOCKET) {
             Ok(stream) => {
                 STREAM = Some(stream);
                 let _flag = get_init();
@@ -202,6 +206,18 @@ pub fn init_handshake() -> std::io::Result<()> {
                 Err(e)
             }
         }
+        // match TcpStream::connect(format!("{}:{}", ORACLE_IP, ORACLE_PORT)) {
+        //     Ok(stream) => {
+        //         STREAM = Some(stream);
+        //         let _flag = get_init();
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         println!("Could not connect to oracle server: {}", e);
+        //         STREAM = None;
+        //         Err(e)
+        //     }
+        // }
     }
 }
 
@@ -318,7 +334,8 @@ pub fn get_bytes() -> [u8; BP_LEN] {
 /// Returns true if we got all three variables
 /// false otherwise
 pub fn get_init() -> bool {
-    let msg = format!("INIT:0x0:0x0:0x0\n");
+    let id: u32 = process::id();
+    let msg = format!("INIT:0x0:0x0:0x0:{}\n", id);
     match send_message(&msg) {
         Ok(()) => println!("Sent message: INIT"),
         Err(e) => panic!("{}", e)
@@ -355,11 +372,13 @@ pub fn get_init() -> bool {
 /// Send the DOJOSNOOP variables to oracle
 fn send_init() {
     log_jaeger_warning("send_init", "Sending DOJOSNOOP to oracle");
+    let pid: u32 = process::id();
     let msg = unsafe {
-        format!("INIT:{:#016x}:{:#016x}:{:#016x}\n",
+        format!("INIT:{:#016x}:{:#016x}:{:#016x}:{}\n",
             DOJOSNOOP_CR3.clone().unwrap(),
             DOJOSNOOP_EXEC.clone().unwrap(),
-            DOJOSNOOP_EXIT.clone().unwrap()
+            DOJOSNOOP_EXIT.clone().unwrap(),
+            pid
         )
     };
     match send_message(&msg) {
