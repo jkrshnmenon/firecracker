@@ -1,0 +1,13 @@
+[package]
+name = "oracle"
+version = "0.1.0"
+authors = ["Jayakrishna Vadayath <jvadayat@asu.edu>"]
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+libc = "0.2.117"
+
+logger = { path = "../logger" }
+vm-memory = { path = "../vm-memory" }
+

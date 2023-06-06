@@ -833,6 +833,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
+name = "oracle"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "logger",
+ "vm-memory 0.3.0",
+]
+
+[[package]]
 name = "os_str_bytes"
 version = "6.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1360,6 +1369,7 @@ dependencies = [
  "linux-loader",
  "logger",
  "mmds",
+ "oracle",
  "rate_limiter",
  "seccompiler",
  "serde",
@@ -1374,7 +1384,6 @@ dependencies = [
  "vm-allocator",
  "vm-memory 0.3.0",
  "vm-superio",
- "xdc",
 ]
 
 [[package]]
@@ -1498,7 +1507,3 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "xdc"
-version = "0.1.0"

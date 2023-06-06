@@ -93,7 +93,8 @@ done
 
 
 ARCH=$(uname -m)
-VERSION=$(git describe --tags --dirty)
+VERSION=""
+# VERSION=$(git describe --tags --dirty)
 PROFILE_DIR=$(get-profile-dir "$PROFILE")
 CARGO_TARGET=$ARCH-unknown-linux-$LIBC
 CARGO_TARGET_DIR=build/cargo_target/$CARGO_TARGET/$PROFILE_DIR

@@ -16,7 +16,24 @@ use std::{fmt, io, result, thread};
 use kvm_bindings::{KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN};
 use kvm_ioctls::VcpuExit;
 use libc::{c_int, c_void, siginfo_t};
-use logger::{error, info, IncMetric, METRICS, log_jaeger_warning};
+use logger::{error, info, IncMetric, METRICS, 
+    log_jaeger_warning
+};
+use oracle:: {
+//     BP_LEN,
+    BP_BYTES,
+    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY,
+    HANDLED, STOPPED, CRASHED,
+    pagewalk,
+    init_handshake,
+    handle_kvm_exit_debug,
+    notify_exec,
+    notify_exit,
+    get_offsets,
+    get_bytes,
+};
+use vm_memory::{GuestAddress, Bytes};
+use std::str::from_utf8;
 use seccompiler::{BpfProgram, BpfProgramRef};
 use utils::errno;
 use utils::eventfd::EventFd;
@@ -268,6 +285,14 @@ impl Vcpu {
             );
         }
 
+        /*
+         * We set up the handshake with the oracle here
+         */
+        match init_handshake() {
+            Ok(()) => log_jaeger_warning("running", "Connected to oracle"),
+            Err(e) => panic!("Could not connect to oracle: {}", e)
+        };
+
         // Start running the machine state in the `Paused` state.
         StateMachine::run(self, Self::paused);
     }
@@ -276,20 +301,25 @@ impl Vcpu {
     fn running(&mut self) -> StateMachine<Self> {
         // This loop is here just for optimizing the emulation path.
         // No point in ticking the state machine if there are no external events.
-        let mut ctr = 0u32;
+        let mut snap_time: bool = false;
         loop {
-            match self.run_emulation(&mut ctr) {
+            match self.run_emulation() {
                 // Emulation ran successfully, continue.
                 Ok(VcpuEmulation::Handled) => (),
                 // Emulation was interrupted, check external events.
                 Ok(VcpuEmulation::Interrupted) => break,
+                // Emulation was interrupted to take snapshot.
+                Ok(VcpuEmulation::Snapshot) => {
+                    snap_time = true;
+                    break;
+                }
                 // If the guest was rebooted or halted:
                 // - vCPU0 will always exit out of `KVM_RUN` with KVM_EXIT_SHUTDOWN or KVM_EXIT_HLT.
                 // - the other vCPUs won't ever exit out of `KVM_RUN`, but they won't consume CPU.
                 // So we pause vCPU0 and send a signal to the emulation thread to stop the VMM.
                 Ok(VcpuEmulation::Stopped) => return self.exit(FcExitCode::Ok),
                 // We found a crash
-                Ok(VcpuEmulation::Crashed) => return self.exit(FcExitCode::GenericError),
+                Ok(VcpuEmulation::Crashed) => return self.exit(FcExitCode::SIGSEGV),
                 // Emulation errors lead to vCPU exit.
                 Err(_) => return self.exit(FcExitCode::GenericError),
             }
@@ -297,6 +327,11 @@ impl Vcpu {
 
         // By default don't change state.
         let mut state = StateMachine::next(Self::running);
+
+        if snap_time == true {
+            // log_jaeger_warning("running", "Switching to paused state");
+            state = StateMachine::next(Self::paused);
+        }
 
         // Break this emulation loop on any transition request/external event.
         match self.event_receiver.try_recv() {
@@ -341,6 +376,7 @@ impl Vcpu {
 
     // This is the main loop of the `Paused` state.
     fn paused(&mut self) -> StateMachine<Self> {
+        // log_jaeger_warning("paused", "Here");
         match self.event_receiver.recv() {
             // Paused ---- Resume ----> Running
             Ok(VcpuEvent::Resume) => {
@@ -358,6 +394,7 @@ impl Vcpu {
                 StateMachine::next(Self::paused)
             }
             Ok(VcpuEvent::SaveState) => {
+                // log_jaeger_warning("paused", "Received save state");
                 // Save vcpu state.
                 self.kvm_vcpu
                     .save_state()
@@ -433,6 +470,7 @@ impl Vcpu {
                 break;
             }
         }
+        log_jaeger_warning("exit", "Calling finish");
         StateMachine::finish()
     }
 
@@ -444,7 +482,7 @@ impl Vcpu {
     /// Runs the vCPU in KVM context and handles the kvm exit reason.
     ///
     /// Returns error or enum specifying whether emulation was handled or interrupted.
-    pub fn run_emulation(&self, ctr: &mut u32) -> Result<VcpuEmulation> {
+    pub fn run_emulation(&self) -> Result<VcpuEmulation> {
         match self.emulate() {
             Ok(run) => match run {
                 VcpuExit::MmioRead(addr, data) => {
@@ -512,35 +550,215 @@ impl Vcpu {
                         )))
                     }
                 },
-                VcpuExit::KaflTOPAMainFull => {
-                    // ToPA buffer is full
-                    // Dump it to a file somewhere
+                VcpuExit::Debug(_arch) => {
+                    let mut regs = self.kvm_vcpu.get_regs().unwrap();
+                    let sregs = self.kvm_vcpu.get_sregs().unwrap();
+                    let mut phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
+
+                    if phys_addr == 0 {
+                        // Fuck it, we'll walk the page tables
+                        match &self.kvm_vcpu.guest_memory_map {
+                            Some(gm) => {
+                                phys_addr = pagewalk(gm.clone(), regs.rip, sregs.cr3);
+                            },
+                            None => {
+                                log_jaeger_warning("run_emulation", "No memory map");
+                            }
+                        }
+                    };
+
                     log_jaeger_warning(
                         "run_emulation",
-                        format!("[{}] KAFL_TOPA_MAIN_FULL", *ctr)
-                        .as_str()
+                        format!("KVM_EXIT_DEBUG: RIP = {:#016x} | Physical RIP = {:#016x} | CR3 = {:#016x}",
+                           regs.rip, phys_addr, sregs.cr3).as_str()
                     );
-                    self.kvm_vcpu.clear_topa_buffer(*ctr);
-                    *ctr += 1;
-                    Ok(VcpuEmulation::Handled)
+
+                    match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3 & !(0xfff)) {
+                        INIT => {
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    Ok(VcpuEmulation::Handled)
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
+                        },
+                        INIT_COMPLETE => {
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    // If we've finished intialization, we can take a snapshot
+                                    Ok(VcpuEmulation::Snapshot)
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
+                        },
+                        EXEC => {
+                            /*
+                             * Need to get the path to the program here.
+                             * And send it to the oracle.
+                             */
+                            // This should be invoked by the dojosnoop_exec handler.
+                            // The string containing the program path should be in RDI.
+                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+                            match &self.kvm_vcpu.guest_memory_map {
+                                Some(gm) => {
+                                    if str_addr == 0 {
+                                        str_addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                    }
+                                    let buf = &mut [0u8; 100];
+                                    gm.read_slice(buf, GuestAddress(str_addr))
+                                        .expect("Failed to read string");
+                                    let end = buf.iter()
+                                        .position(|&c| c == b'\0')
+                                        .unwrap_or(buf.len());
+                                    let prog_path = from_utf8(&buf[0..end]).unwrap();
+                                    notify_exec(prog_path);
+                                },
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                }
+                            };
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    Ok(VcpuEmulation::Handled)
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
+                        },
+                        EXIT => {
+                            /*
+                             * Need to get the path to the program and exit code here.
+                             * And send it to the oracle.
+                             */
+                            // This should be invoked by the dojosnoop_exec handler.
+                            // The string containing the program path should be in RDI.
+                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+                            // The exit code should be in rsi
+                            let exit_code: u64 = regs.rsi as u64;
+                            let ret = match &self.kvm_vcpu.guest_memory_map {
+                                Some(gm) => {
+                                    if str_addr == 0 {
+                                        str_addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                    }
+                                    let buf = &mut [0u8; 100];
+                                    gm.read_slice(buf, GuestAddress(str_addr))
+                                        .expect("Failed to read string");
+                                    let end = buf.iter()
+                                        .position(|&c| c == b'\0')
+                                        .unwrap_or(buf.len());
+                                    let prog_path = from_utf8(&buf[0..end]).unwrap();
+                                    // Oracle will let us know if we need to return
+                                    // Handled, Stopped or Crashed
+                                    notify_exit(prog_path, exit_code)
+                                },
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                    0x1337
+                                }
+                            };
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    match ret {
+                                        HANDLED => Ok(VcpuEmulation::Handled),
+                                        STOPPED => Ok(VcpuEmulation::Stopped),
+                                        CRASHED => Ok(VcpuEmulation::Crashed),
+                                        _ => Ok(VcpuEmulation::Handled)
+                                    }
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
+                        },
+                        MODIFY => {
+                            /*
+                             * Here we need to get the offsets to modify from Oracle
+                             * We insert the BP_BYTES into the physical addresses
+                             */
+                            let offsets = get_offsets();
+                            match &self.kvm_vcpu.guest_memory_map {
+                                Some(gm) => {
+                                    for bbl_addr in offsets {
+                                        gm.write_slice(&BP_BYTES, GuestAddress(bbl_addr))
+                                            .expect("Failed to write slice");
+                                    }
+                                    /*
+                                     * Now that we've modified all the offsets, we need to unmodify the current one
+                                     * And continue
+                                     */
+                                    let fix_bytes = get_bytes();
+                                    gm.write_slice(&fix_bytes, GuestAddress(phys_addr))
+                                        .expect("Failed to write slice");
+                                },
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                }
+                            };
+                            Ok(VcpuEmulation::Handled)
+                        },
+                        UNMODIFY => {
+                            let fix_bytes = get_bytes();
+                            match &self.kvm_vcpu.guest_memory_map {
+                                Some(gm) => {
+                                    gm.write_slice(&fix_bytes, GuestAddress(phys_addr))
+                                        .expect("Failed to write slice");
+                                }
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                }
+                            };
+                            /*
+                             * Reset the RIP and continue execution
+                             */
+                            regs.rip = regs.rip;
+
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    Ok(VcpuEmulation::Handled)
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
+                        },
+                        _ => {
+                            log_jaeger_warning("run_emulation", "Unknown condition triggered");
+                            Ok(VcpuEmulation::Stopped)
+                        }
+                    }
+                    /*
+                    Ok(VcpuEmulation::Stopped)
+                    */
                 },
-                VcpuExit::KaflUserAbort(arg0) => {
-                    log_jaeger_warning(
-                        "run_emulation",
-                        format!("KAFL_USER_ABORT: {}", arg0)
-                        .as_str()
-                    );
-                    Ok(VcpuEmulation::Crashed)
-                },
-                VcpuExit::KaflGetProgram(arg0) => {
-                    let sregs = self.kvm_vcpu.fd.get_sregs().unwrap();
-                    log_jaeger_warning(
-                        "run_emulation",
-                        format!("KAFL_GET_PROGRAM: {}\tCR3 = {}", arg0, sregs.cr3)
-                        .as_str()
-                    );
-                    Ok(VcpuEmulation::Handled)
-                }
                 arch_specific_reason => {
                     // run specific architecture emulation.
                     self.kvm_vcpu.run_arch_emulation(arch_specific_reason)
@@ -691,6 +909,7 @@ pub enum VcpuEmulation {
     Interrupted,
     Stopped,
     Crashed,
+    Snapshot,
 }
 
 #[cfg(test)]
