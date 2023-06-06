@@ -22,7 +22,7 @@ use logger::{error, info, IncMetric, METRICS,
 use oracle:: {
 //     BP_LEN,
     BP_BYTES,
-    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY,
+    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY, SNAPSHOT,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
     init_handshake,
@@ -594,7 +594,7 @@ impl Vcpu {
                             match self.kvm_vcpu.set_regs(regs) {
                                 Ok(()) => {
                                     // If we've finished intialization, we can take a snapshot
-                                    Ok(VcpuEmulation::Snapshot)
+                                    Ok(VcpuEmulation::Handled)
                                 },
                                 Err(e) => {
                                     log_jaeger_warning(
@@ -604,6 +604,9 @@ impl Vcpu {
                                     Ok(VcpuEmulation::Stopped)
                                 }
                             }
+                        },
+                        SNAPSHOT => {
+                            Ok(VcpuEmulation::Snapshot)
                         },
                         EXEC => {
                             /*

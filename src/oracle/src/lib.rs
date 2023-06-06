@@ -14,6 +14,7 @@ pub const EXEC:u64 = 2;
 pub const EXIT:u64 = 3;
 pub const MODIFY:u64 = 4;
 pub const UNMODIFY:u64 = 5;
+pub const SNAPSHOT: u64 = 6;
 
 pub const HANDLED:u64 = 0;
 pub const STOPPED:u64 = 1;
@@ -224,14 +225,12 @@ pub fn init_handshake() -> std::io::Result<()> {
 
 /// This function is used to inform the Oracle of a breakpoint event
 /// Oracle will let us know if this is the entrypoint
-pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> bool {
-    log_jaeger_warning("notify_oracle", "Notifying");
+pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> (bool, bool) {
     let msg = format!("{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3);
     match send_message(&msg) {
         Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
         Err(e) => panic!("{}", e)
     };
-    log_jaeger_warning("notify_oracle", "reading line");
     let is_first: bool =  match recvline() {
         Ok(data) => data.trim().parse::<bool>().unwrap(),
         Err(e) => {
@@ -239,8 +238,14 @@ pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> bool {
             false
         }
     };
-    log_jaeger_warning("notify_oracle", "Finished");
-    is_first
+    let take_snapshot: bool =  match recvline() {
+        Ok(data) => data.trim().parse::<bool>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            false
+        }
+    };
+    (is_first, take_snapshot)
 }
 
 
@@ -424,7 +429,10 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
 
     // We've already initialized all the required variables.
     // Handle this situation properly now
-    let is_first = notify_oracle(rip, phys_addr, cr3);
+    let (is_first, take_snapshot) = notify_oracle(rip, phys_addr, cr3);
+    if take_snapshot == true {
+        return SNAPSHOT;
+    }
     if is_first == true {
         // If we get here, it means that we've hit the breakpoint injected into
         // the entry point of the current program.
