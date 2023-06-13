@@ -168,7 +168,7 @@ fn recv_byte() -> std::io::Result<u8> {
 
 /// Wrapper for reading one line from Oracle
 fn recvline() -> std::io::Result<String> {
-    log_jaeger_warning("recvline", "Reading line");
+    // log_jaeger_warning("recvline", "Reading line");
     let mut data: Vec<u8> = Vec::new(); 
     loop {
         match recv_byte() {
@@ -185,7 +185,7 @@ fn recvline() -> std::io::Result<String> {
     };
     let s = String::from_utf8(data).expect("Found invalid UTF-8");
     // println!("Received line: {:?}", s);
-    log_jaeger_warning("recvline", "Finished");
+    // log_jaeger_warning("recvline", "Finished");
     Ok(s)
 }
 
@@ -225,13 +225,13 @@ pub fn init_handshake() -> std::io::Result<()> {
 /// This function is used to inform the Oracle of a breakpoint event
 /// Oracle will let us know if this is the entrypoint
 pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> bool {
-    log_jaeger_warning("notify_oracle", "Notifying");
+    // log_jaeger_warning("notify_oracle", "Notifying");
     let msg = format!("{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3);
     match send_message(&msg) {
         Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
         Err(e) => panic!("{}", e)
     };
-    log_jaeger_warning("notify_oracle", "reading line");
+    // log_jaeger_warning("notify_oracle", "reading line");
     let is_first: bool =  match recvline() {
         Ok(data) => data.trim().parse::<bool>().unwrap(),
         Err(e) => {
@@ -239,7 +239,7 @@ pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> bool {
             false
         }
     };
-    log_jaeger_warning("notify_oracle", "Finished");
+    // log_jaeger_warning("notify_oracle", "Finished");
     is_first
 }
 
@@ -254,37 +254,37 @@ pub fn notify_exec(prog_path: &str) {
 
 
 pub fn notify_exit(prog_path: &str, exit_code: u64) -> u64 {
-    log_jaeger_warning("notify_exit", "Notifying");
+    // log_jaeger_warning("notify_exit", "Notifying");
     let msg = format!("EXIT:{}={}\n", prog_path, exit_code);
     match send_message(&msg) {
         Ok(()) => println!("Sent exit code: {}", exit_code),
         Err(e) => panic!("{}", e)
     };
     let mut ret:u64 = HANDLED;
-    log_jaeger_warning("notify_exit", "reading line");
+    // log_jaeger_warning("notify_exit", "reading line");
     match recvline() {
         Ok(data) => {ret = data.parse::<u64>().unwrap()},
         Err(e) => {
             println!("Could not decode: {}", e);
         }
     };
-    log_jaeger_warning("notify_exit", "Finished");
+    // log_jaeger_warning("notify_exit", "Finished");
     ret
 }
 
 
 /// The Oracle will send us the physical addresses for the program
 pub fn get_offsets() -> Vec<u64> {
-    log_jaeger_warning("get_offsets", "Getting REQ");
+    // log_jaeger_warning("get_offsets", "Getting REQ");
     let msg = format!("REQ\n");
     match send_message(&msg) {
         Ok(()) => println!("Sent message: REQ"),
         Err(e) => panic!("{}", e)
     };
-    log_jaeger_warning("get_offsets", "Getting values");
+    // log_jaeger_warning("get_offsets", "Getting values");
     let mut values: Vec<u64> = Vec::new();
     loop {
-        log_jaeger_warning("get_offsets", "loop getting values");
+        // log_jaeger_warning("get_offsets", "loop getting values");
         match recvline() {
             Ok(data) => {
                 match data.parse::<u64>() {
@@ -299,14 +299,14 @@ pub fn get_offsets() -> Vec<u64> {
         };
     }
     // println!("Received values: {:?}", values);
-    log_jaeger_warning("get_offsets", "Finished");
+    // log_jaeger_warning("get_offsets", "Finished");
     values
 }
 
 /// The address of the current RIP and the physical address will be sent to the Oracle
 /// The Oracle will send us the bytes that should be replaced
 pub fn get_bytes() -> [u8; BP_LEN] {
-    log_jaeger_warning("get_bytes", "Getting BYTES");
+    // log_jaeger_warning("get_bytes", "Getting BYTES");
     let msg = format!("BYTES\n");
     match send_message(&msg) {
         Ok(()) => println!("Sent message: BYTES"),
@@ -325,7 +325,7 @@ pub fn get_bytes() -> [u8; BP_LEN] {
         };
     }
     // println!("Received values: {:?}", values);
-    log_jaeger_warning("get_bytes", "Finished");
+    // log_jaeger_warning("get_bytes", "Finished");
     values
 }
 
@@ -371,7 +371,7 @@ pub fn get_init() -> bool {
 
 /// Send the DOJOSNOOP variables to oracle
 fn send_init() {
-    log_jaeger_warning("send_init", "Sending DOJOSNOOP to oracle");
+    // log_jaeger_warning("send_init", "Sending DOJOSNOOP to oracle");
     let pid: u32 = process::id();
     let msg = unsafe {
         format!("INIT:{:#016x}:{:#016x}:{:#016x}:{}\n",
