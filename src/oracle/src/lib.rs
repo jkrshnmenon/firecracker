@@ -348,9 +348,9 @@ pub fn get_bytes() -> [u8; BP_LEN] {
 
 /// Here, we request the fuzzing input from the Oracle
 pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
-    let msg = format!("BYTES\n");
+    let msg = format!("FUZZ\n");
     match send_message(&msg) {
-        Ok(()) => println!("Sent message: BYTES"),
+        Ok(()) => println!("Sent message: FUZZ"),
         Err(e) => panic!("{}", e)
     };
     let mut values: [u8; FUZZ_LEN] = [0; FUZZ_LEN];
