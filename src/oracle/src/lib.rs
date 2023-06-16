@@ -348,6 +348,7 @@ pub fn get_bytes() -> [u8; BP_LEN] {
 
 /// Here, we request the fuzzing input from the Oracle
 pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
+    log_jaeger_warning("get_fuzz_bytes", "Getting fuzzing bytes");
     let msg = format!("FUZZ\n");
     match send_message(&msg) {
         Ok(()) => println!("Sent message: FUZZ"),
@@ -355,8 +356,12 @@ pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
     };
     let sz:usize= match recvline() {
         Ok(data) => data.parse::<usize>().unwrap(),
-        Err(e) => panic!("Could not decode: {}", e)
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            0
+        }
     };
+    log_jaeger_warning("get_fuzz_bytes", format!("Got size = {}", sz).as_str());
     let mut values:[u8; FUZZ_LEN] = [0; FUZZ_LEN];
     for i in 0..sz {
         match recv_byte() {
@@ -365,6 +370,7 @@ pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
         }
     };
     // println!("Received values: {:?}", values);
+    log_jaeger_warning("get_fuzz_bytes", "Finished");
     (values, sz)
 }
 
