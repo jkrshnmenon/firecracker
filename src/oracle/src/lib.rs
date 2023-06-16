@@ -353,22 +353,17 @@ pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
         Ok(()) => println!("Sent message: FUZZ"),
         Err(e) => panic!("{}", e)
     };
-    let mut values: [u8; FUZZ_LEN] = [0; FUZZ_LEN];
-    let mut sz: usize = 0;
-    for i in 0..FUZZ_LEN {
-        match recvline() {
-            Ok(data) => {
-                match data.parse::<u8>() {
-                    Ok(x) => {
-                        values[i] = x;
-                        sz += 1;
-                    },
-                    Err(_e) => break
-                }
-            },
-            Err(e) => println!("Could not decode: {}", e)
-        };
-    }
+    let sz:usize= match recvline() {
+        Ok(data) => data.parse::<usize>().unwrap(),
+        Err(e) => panic!("Could not decode: {}", e)
+    };
+    let mut values:[u8; FUZZ_LEN] = [0; FUZZ_LEN];
+    for i in 0..sz {
+        match recv_byte() {
+            Ok(byte) => {values[i] = byte},
+            Err(e) => println!("Error reading fuzz from server: {}", e)
+        }
+    };
     // println!("Received values: {:?}", values);
     (values, sz)
 }
