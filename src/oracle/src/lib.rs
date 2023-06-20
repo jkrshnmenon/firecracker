@@ -14,6 +14,8 @@ pub const EXEC:u64 = 2;
 pub const EXIT:u64 = 3;
 pub const MODIFY:u64 = 4;
 pub const UNMODIFY:u64 = 5;
+pub const SNAPSHOT: u64 = 6;
+pub const FUZZ:u64 = 7;
 
 pub const HANDLED:u64 = 0;
 pub const STOPPED:u64 = 1;
@@ -33,6 +35,9 @@ static mut DOJOSNOOP_EXIT: Option<u64> = None;
 /// We use this variable to identify the length of the breakpoint instruction
 /// In the current situation, it is only one byte "\xcc"
 pub const BP_LEN: usize = 1;
+
+/// According to my knowledge of AFL++, this is the default size of input
+pub const FUZZ_LEN: usize = 1024;
 
 pub const BP_BYTES: [u8; BP_LEN] = [0xcc];
 
@@ -224,14 +229,12 @@ pub fn init_handshake() -> std::io::Result<()> {
 
 /// This function is used to inform the Oracle of a breakpoint event
 /// Oracle will let us know if this is the entrypoint
-pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> bool {
-    // log_jaeger_warning("notify_oracle", "Notifying");
+pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> (bool, bool, bool) {
     let msg = format!("{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3);
     match send_message(&msg) {
         Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
         Err(e) => panic!("{}", e)
     };
-    // log_jaeger_warning("notify_oracle", "reading line");
     let is_first: bool =  match recvline() {
         Ok(data) => data.trim().parse::<bool>().unwrap(),
         Err(e) => {
@@ -239,8 +242,21 @@ pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> bool {
             false
         }
     };
-    // log_jaeger_warning("notify_oracle", "Finished");
-    is_first
+    let take_snapshot: bool =  match recvline() {
+        Ok(data) => data.trim().parse::<bool>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            false
+        }
+    };
+    let fuzz: bool =  match recvline() {
+        Ok(data) => data.trim().parse::<bool>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            false
+        }
+    };
+    (is_first, take_snapshot, fuzz)
 }
 
 
@@ -327,6 +343,35 @@ pub fn get_bytes() -> [u8; BP_LEN] {
     // println!("Received values: {:?}", values);
     // log_jaeger_warning("get_bytes", "Finished");
     values
+}
+
+
+/// Here, we request the fuzzing input from the Oracle
+pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
+    log_jaeger_warning("get_fuzz_bytes", "Getting fuzzing bytes");
+    let msg = format!("FUZZ\n");
+    match send_message(&msg) {
+        Ok(()) => println!("Sent message: FUZZ"),
+        Err(e) => panic!("{}", e)
+    };
+    let sz:usize= match recvline() {
+        Ok(data) => data.parse::<usize>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            0
+        }
+    };
+    log_jaeger_warning("get_fuzz_bytes", format!("Got size = {}", sz).as_str());
+    let mut values:[u8; FUZZ_LEN] = [0; FUZZ_LEN];
+    for i in 0..sz {
+        match recv_byte() {
+            Ok(byte) => {values[i] = byte},
+            Err(e) => println!("Error reading fuzz from server: {}", e)
+        }
+    };
+    // println!("Received values: {:?}", values);
+    log_jaeger_warning("get_fuzz_bytes", "Finished");
+    (values, sz)
 }
 
 
@@ -424,7 +469,13 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
 
     // We've already initialized all the required variables.
     // Handle this situation properly now
-    let is_first = notify_oracle(rip, phys_addr, cr3);
+    let (is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3);
+    if take_snapshot == true {
+        return SNAPSHOT;
+    }
+    if fuzz == true {
+        return FUZZ;
+    }
     if is_first == true {
         // If we get here, it means that we've hit the breakpoint injected into
         // the entry point of the current program.

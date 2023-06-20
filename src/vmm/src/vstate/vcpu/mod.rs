@@ -22,7 +22,7 @@ use logger::{error, info, IncMetric, METRICS,
 use oracle:: {
 //     BP_LEN,
     BP_BYTES,
-    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY,
+    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY, SNAPSHOT, FUZZ,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
     init_handshake,
@@ -31,6 +31,7 @@ use oracle:: {
     notify_exit,
     get_offsets,
     get_bytes,
+    get_fuzz_bytes,
 };
 use vm_memory::{GuestAddress, Bytes};
 use std::str::from_utf8;
@@ -594,7 +595,7 @@ impl Vcpu {
                             match self.kvm_vcpu.set_regs(regs) {
                                 Ok(()) => {
                                     // If we've finished intialization, we can take a snapshot
-                                    Ok(VcpuEmulation::Snapshot)
+                                    Ok(VcpuEmulation::Handled)
                                 },
                                 Err(e) => {
                                     log_jaeger_warning(
@@ -604,6 +605,9 @@ impl Vcpu {
                                     Ok(VcpuEmulation::Stopped)
                                 }
                             }
+                        },
+                        SNAPSHOT => {
+                            Ok(VcpuEmulation::Snapshot)
                         },
                         EXEC => {
                             /*
@@ -749,6 +753,59 @@ impl Vcpu {
                                     Ok(VcpuEmulation::Stopped)
                                 }
                             }
+                        },
+                        FUZZ => {
+                            // This case should only be hit when the snapshot is loaded
+                            // Which means that we can also request the offsets after we've injected the fuzzing input
+                            // But first things first, let's get the fuzzing input
+                            let (fuzz_bytes, sz) = get_fuzz_bytes();
+                            let mut fuzz_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+
+                            if fuzz_addr == 0 {
+                                // Fuck it, we'll walk the page tables
+                                match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        fuzz_addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                    },
+                                    None => {
+                                        log_jaeger_warning("run_emulation", "No memory map");
+                                    }
+                                }
+                            };
+                            log_jaeger_warning("handle_kvm_exit", format!("Writing payload into {:#016x}", fuzz_addr).as_str());
+                            match &self.kvm_vcpu.guest_memory_map {
+                                Some(gm) => {
+                                    gm.write_slice(&fuzz_bytes[..sz], GuestAddress(fuzz_addr))
+                                        .expect("Failed to write slice");
+                                }
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                }
+                            };
+                            /*
+                             * Now we need to get the offsets to modify from Oracle
+                             * We insert the BP_BYTES into the physical addresses
+                             */
+                            let offsets = get_offsets();
+                            match &self.kvm_vcpu.guest_memory_map {
+                                Some(gm) => {
+                                    for bbl_addr in offsets {
+                                        gm.write_slice(&BP_BYTES, GuestAddress(bbl_addr))
+                                            .expect("Failed to write slice");
+                                    }
+                                    /*
+                                     * Now that we've modified all the offsets, we need to unmodify the current one
+                                     * And continue
+                                     */
+                                    let fix_bytes = get_bytes();
+                                    gm.write_slice(&fix_bytes, GuestAddress(phys_addr))
+                                        .expect("Failed to write slice");
+                                },
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                }
+                            };
+                            Ok(VcpuEmulation::Handled)
                         },
                         _ => {
                             log_jaeger_warning("run_emulation", "Unknown condition triggered");
