@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::{io, panic, process};
 
 use event_manager::SubscriberOps;
-use logger::{error, info, ProcessTimeReporter, StoreMetric, LOGGER, METRICS};
+use logger::{error, info, ProcessTimeReporter, StoreMetric, LOGGER, METRICS, log_jaeger_warning};
 use seccompiler::BpfThreadMap;
 use snapshot::Snapshot;
 use utils::arg_parser::{ArgParser, Argument};
@@ -381,6 +381,10 @@ fn main_exitable() -> FcExitCode {
 
     match (snap_file, mem_file) {
         (Some(_), Some(_)) => {
+            if vmm_config_json.is_none() {
+                panic!("--config-file argument is necessary");
+            }
+            log_jaeger_warning("main", "Calling run_with_snapshot");
             return run_with_snapshot(
                 snap_file,
                 mem_file,
