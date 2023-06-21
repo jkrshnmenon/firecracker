@@ -16,7 +16,7 @@ use snapshot::Snapshot;
 use utils::arg_parser::{ArgParser, Argument};
 use utils::terminal::Terminal;
 use utils::validators::validate_instance_id;
-use vmm::resources::VmResources;
+use vmm::resources::{VmResources};
 use vmm::seccomp_filters::{get_filters, SeccompConfig};
 use vmm::signal_handler::register_signal_handlers;
 use vmm::version_map::{FC_VERSION_TO_SNAP_VERSION, VERSION_MAP};
@@ -24,6 +24,13 @@ use vmm::vmm_config::instance_info::{InstanceInfo, VmState};
 use vmm::vmm_config::logger::{init_logger, LoggerConfig, LoggerLevel};
 use vmm::vmm_config::metrics::{init_metrics, MetricsConfig};
 use vmm::{EventManager, FcExitCode, HTTP_MAX_PAYLOAD_SIZE};
+
+use std::io::{Seek, SeekFrom};
+use std::fs::OpenOptions;
+use vm_memory::GuestMemoryMmap;
+use vmm::memory_snapshot::SnapshotMemory;
+use vmm::builder::build_microvm_from_snapshot;
+use vmm::persist::MicrovmState;
 
 // The reason we place default API socket under /run is that API socket is a
 // runtime file.
@@ -372,6 +379,20 @@ fn main_exitable() -> FcExitCode {
         })
         .unwrap_or_else(|| api_payload_limit);
 
+    match (snap_file, mem_file) {
+        (Some(_), Some(_)) => {
+            return run_with_snapshot(
+                snap_file,
+                mem_file,
+                vmm_config_json,
+                instance_info,
+                mmds_size_limit,
+                metadata_json.as_deref(),
+            );
+        },
+        _ => ()
+    };
+
     if api_enabled {
         let bind_path = arguments
             .single_value("api-sock")
@@ -525,6 +546,84 @@ fn build_microvm_from_json(
     info!("Successfully started microvm that was configured from one single json");
 
     Ok((vm_resources, vmm))
+}
+
+fn get_file(fname: Option<&String>) -> File {
+    let file_path_buf = PathBuf::from(fname.unwrap());
+
+    let file = match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(file_path_buf.as_path()) {
+            Ok(temp_file) => temp_file,
+            Err(_) => return File::open("FUCK").unwrap()
+        };
+    file
+}
+
+fn run_with_snapshot(
+    snap_file: Option<&String>,
+    mem_file: Option<&String>,
+    config_json: Option<String>,
+    instance_info: InstanceInfo,
+    mmds_size_limit: usize,
+    metadata_json: Option<&str>,
+) -> FcExitCode {
+    let mut vm_resources = match 
+        VmResources::from_json(&config_json.unwrap(), &instance_info, mmds_size_limit, metadata_json)
+        {
+            Ok(resources) => resources,
+            Err(_) => return FcExitCode::UnexpectedError
+        };
+
+
+    let mut event_manager = EventManager::new().unwrap();
+    let empty_seccomp_filters = get_filters(SeccompConfig::None).unwrap();
+
+    let mut snapshot_file = get_file(snap_file);
+    let memory_file = get_file(mem_file);
+    // Deserialize microVM state.
+    let snapshot_file_metadata = snapshot_file.metadata().unwrap();
+    let snapshot_len = snapshot_file_metadata.len() as usize;
+    snapshot_file.seek(SeekFrom::Start(0)).unwrap();
+    let microvm_state: MicrovmState = Snapshot::load(
+        &mut snapshot_file,
+        snapshot_len,
+        VERSION_MAP.clone(),
+    )
+    .unwrap();
+    let mem = GuestMemoryMmap::restore(
+        Some(&memory_file),
+        &microvm_state.memory_state,
+        false,
+    )
+    .unwrap();
+
+    // Build microVM from state.
+    let vmm = build_microvm_from_snapshot(
+        &InstanceInfo::default(),
+        &mut event_manager,
+        microvm_state,
+        mem,
+        None,
+        false,
+        &empty_seccomp_filters,
+        &mut vm_resources,
+    )
+    .unwrap();
+
+    // Run the EventManager that drives everything in the microVM.
+    loop {
+        event_manager
+            .run()
+            .expect("Failed to start the event manager");
+
+        if let Some(exit_code) = vmm.lock().unwrap().shutdown_exit_code() {
+            return exit_code;
+        }
+    }
 }
 
 fn run_without_api(
