@@ -381,17 +381,10 @@ fn main_exitable() -> FcExitCode {
 
     match (snap_file, mem_file) {
         (Some(_), Some(_)) => {
-            if vmm_config_json.is_none() {
-                error!("--config-file argument is necessary");
-            }
             log_jaeger_warning("main", "Calling run_with_snapshot");
             return run_with_snapshot(
                 snap_file,
                 mem_file,
-                vmm_config_json,
-                instance_info,
-                mmds_size_limit,
-                metadata_json.as_deref(),
             );
         },
         _ => ()
@@ -570,10 +563,6 @@ fn get_file(fname: Option<&String>) -> File {
 fn run_with_snapshot(
     snap_file: Option<&String>,
     mem_file: Option<&String>,
-    config_json: Option<String>,
-    instance_info: InstanceInfo,
-    mmds_size_limit: usize,
-    metadata_json: Option<&str>,
 ) -> FcExitCode {
     // let mut vm_resources = match 
     //     VmResources::from_json(&config_json.unwrap(), &instance_info, mmds_size_limit, metadata_json)
