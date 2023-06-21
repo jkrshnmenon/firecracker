@@ -491,6 +491,7 @@ dependencies = [
  "snapshot",
  "timerfd",
  "utils",
+ "vm-memory 0.3.0",
  "vmm",
 ]
 
