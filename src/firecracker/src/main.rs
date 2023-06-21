@@ -605,6 +605,11 @@ fn run_with_snapshot(
     )
     .unwrap();
 
+    match vmm.lock().unwrap().resume_vm() {
+        Ok(_) => log_jaeger_warning("run_with_snapshot", "vm is running"),
+        Err(_) => ()
+    };
+
     // Run the EventManager that drives everything in the microVM.
     loop {
         event_manager
