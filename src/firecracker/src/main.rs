@@ -382,7 +382,7 @@ fn main_exitable() -> FcExitCode {
     match (snap_file, mem_file) {
         (Some(_), Some(_)) => {
             if vmm_config_json.is_none() {
-                panic!("--config-file argument is necessary");
+                error!("--config-file argument is necessary");
             }
             log_jaeger_warning("main", "Calling run_with_snapshot");
             return run_with_snapshot(
