@@ -603,7 +603,7 @@ fn run_with_snapshot(
         None,
         false,
         &empty_seccomp_filters,
-        &mut vm_resources,
+        vm_resources,
     )
     .unwrap();
 
