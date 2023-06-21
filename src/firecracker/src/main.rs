@@ -575,13 +575,13 @@ fn run_with_snapshot(
     mmds_size_limit: usize,
     metadata_json: Option<&str>,
 ) -> FcExitCode {
-    let mut vm_resources = match 
-        VmResources::from_json(&config_json.unwrap(), &instance_info, mmds_size_limit, metadata_json)
-        {
-            Ok(resources) => resources,
-            Err(_) => return FcExitCode::UnexpectedError
-        };
-
+    // let mut vm_resources = match 
+    //     VmResources::from_json(&config_json.unwrap(), &instance_info, mmds_size_limit, metadata_json)
+    //     {
+    //         Ok(resources) => resources,
+    //         Err(_) => return FcExitCode::UnexpectedError
+    //     };
+    let vm_resources = &mut VmResources::default();
 
     let mut event_manager = EventManager::new().unwrap();
     let empty_seccomp_filters = get_filters(SeccompConfig::None).unwrap();
