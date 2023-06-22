@@ -539,12 +539,10 @@ impl Vmm {
         if vcpu_states.len() != self.vcpus_handles.len() {
             return Err(RestoreVcpusError::InvalidInput);
         }
-        log_jaeger_warning("restore_vcpu_states", "Sending events");
         for (handle, state) in self.vcpus_handles.iter().zip(vcpu_states.drain(..)) {
             handle.send_event(VcpuEvent::RestoreState(Box::new(state)))?;
         }
 
-        log_jaeger_warning("restore_vcpu_states", "Handling events");
         let vcpu_responses = self
             .vcpus_handles
             .iter()
@@ -553,7 +551,6 @@ impl Vmm {
             .collect::<std::result::Result<Vec<VcpuResponse>, RecvTimeoutError>>()
             .map_err(|_| RestoreVcpusError::UnexpectedVcpuResponse)?;
 
-        log_jaeger_warning("restore_vcpu_states", "Done");
         for response in vcpu_responses.into_iter() {
             match response {
                 VcpuResponse::RestoredState => Ok(()),
