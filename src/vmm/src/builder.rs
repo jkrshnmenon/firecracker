@@ -496,7 +496,7 @@ pub enum BuildMicrovmFromSnapshotError {
 #[allow(clippy::too_many_arguments)]
 pub fn build_microvm_from_snapshot(
     instance_info: &InstanceInfo,
-    event_manager: &mut EventManager,
+    _ev_mgr: &mut EventManager,
     microvm_state: MicrovmState,
     guest_memory: GuestMemoryMmap,
     uffd: Option<Uffd>,
@@ -504,6 +504,25 @@ pub fn build_microvm_from_snapshot(
     seccomp_filters: &BpfThreadMap,
     vm_resources: &mut VmResources,
 ) -> std::result::Result<Arc<Mutex<Vmm>>, BuildMicrovmFromSnapshotError> {
+    loop {
+        let pid = fork();
+        match pid.expect("Fork failed: Unable to create child process!") {
+            Child => {
+                log_jaeger_warning("build_microvm_from_snapshot", format!("Created child with PID: {}", getpid()).as_str());
+                break;
+            },
+            Parent {child: _} => {
+                log_jaeger_warning("build_microvm_from_snapshot", format!("Parent (pid={}) waiting for child to exit", getpid()).as_str());
+                wait()
+                .expect("Could not wait for the child");
+            }
+        };
+    };
+
+    log_jaeger_warning("build_microvm_from_snapshot", format!("Child (pid={}) continuing", getpid()).as_str());
+
+    let mut event_manager = EventManager::new().unwrap();
+
     let vcpu_count = u8::try_from(microvm_state.vcpu_states.len()).map_err(|_| {
         BuildMicrovmFromSnapshotError::TooManyVCPUs(microvm_state.vcpu_states.len())
     })?;
@@ -511,7 +530,7 @@ pub fn build_microvm_from_snapshot(
     // Build Vmm.
     let (mut vmm, vcpus) = create_vmm_and_vcpus(
         instance_info,
-        event_manager,
+        &mut event_manager,
         guest_memory.clone(),
         uffd,
         track_dirty_pages,
@@ -564,7 +583,7 @@ pub fn build_microvm_from_snapshot(
     let mmio_ctor_args = MMIODevManagerConstructorArgs {
         mem: guest_memory,
         vm: vmm.vm.fd(),
-        event_manager,
+        event_manager: &mut event_manager,
         for_each_restored_device: VmResources::update_from_restored_device,
         vm_resources,
         instance_id: &instance_info.id,
@@ -576,22 +595,6 @@ pub fn build_microvm_from_snapshot(
     vmm.emulate_serial_init()?;
 
 
-    loop {
-        let pid = fork();
-        match pid.expect("Fork failed: Unable to create child process!") {
-            Child => {
-                log_jaeger_warning("build_microvm_from_snapshot", format!("Created child with PID: {}", getpid()).as_str());
-                break;
-            },
-            Parent {child: _} => {
-                log_jaeger_warning("build_microvm_from_snapshot", format!("Parent (pid={}) waiting for child to exit", getpid()).as_str());
-                wait()
-                .expect("Could not wait for the child");
-            }
-        };
-    };
-
-    log_jaeger_warning("build_microvm_from_snapshot", format!("Child (pid={}) continuing", getpid()).as_str());
     // Move vcpus to their own threads and start their state machine in the 'Paused' state.
     vmm.start_vcpus(
         vcpus,
