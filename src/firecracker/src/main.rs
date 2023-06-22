@@ -29,7 +29,7 @@ use std::io::{Seek, SeekFrom};
 use std::fs::OpenOptions;
 use vm_memory::GuestMemoryMmap;
 use vmm::memory_snapshot::SnapshotMemory;
-use vmm::builder::build_microvm_from_snapshot;
+use vmm::builder::{build_microvm_from_snapshot2};
 use vmm::persist::MicrovmState;
 
 // The reason we place default API socket under /run is that API socket is a
@@ -569,7 +569,6 @@ fn run_with_snapshot(
     //     };
     let vm_resources = &mut VmResources::default();
 
-    let mut event_manager = EventManager::new().unwrap();
     let empty_seccomp_filters = get_filters(SeccompConfig::None).unwrap();
 
     let mut snapshot_file = get_file(snap_file);
@@ -593,9 +592,8 @@ fn run_with_snapshot(
     .unwrap();
 
     // Build microVM from state.
-    let vmm = build_microvm_from_snapshot(
+    build_microvm_from_snapshot2(
         &InstanceInfo::default(),
-        &mut event_manager,
         microvm_state,
         mem,
         None,
@@ -603,8 +601,9 @@ fn run_with_snapshot(
         &empty_seccomp_filters,
         vm_resources,
     )
-    .unwrap();
+    .expect("Failed to build microvm");
 
+    /*
     match vmm.lock().unwrap().resume_vm() {
         Ok(_) => log_jaeger_warning("run_with_snapshot", "vm is running"),
         Err(_) => panic!("Could not resume VM")
@@ -620,6 +619,8 @@ fn run_with_snapshot(
             return exit_code;
         }
     }
+    */
+    FcExitCode::Ok
 }
 
 fn run_without_api(

@@ -52,7 +52,7 @@ use crate::vmm_config::machine_config::{VmConfigError, VmUpdateConfig};
 use crate::vstate::system::KvmContext;
 use crate::vstate::vcpu::{Vcpu, VcpuConfig};
 use crate::vstate::vm::Vm;
-use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver};
+use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitCode};
 
 use nix::sys::wait::wait;
 use nix::unistd::ForkResult::{Child, Parent};
@@ -494,16 +494,15 @@ pub enum BuildMicrovmFromSnapshotError {
 /// An `Arc` reference of the built `Vmm` is also plugged in the `EventManager`, while another
 /// is returned.
 #[allow(clippy::too_many_arguments)]
-pub fn build_microvm_from_snapshot(
+pub fn build_microvm_from_snapshot2(
     instance_info: &InstanceInfo,
-    _ev_mgr: &mut EventManager,
     microvm_state: MicrovmState,
     guest_memory: GuestMemoryMmap,
     uffd: Option<Uffd>,
     track_dirty_pages: bool,
     seccomp_filters: &BpfThreadMap,
     vm_resources: &mut VmResources,
-) -> std::result::Result<Arc<Mutex<Vmm>>, BuildMicrovmFromSnapshotError> {
+) -> std::result::Result<FcExitCode, BuildMicrovmFromSnapshotError> {
     loop {
         let pid = fork();
         match pid.expect("Fork failed: Unable to create child process!") {
@@ -515,6 +514,7 @@ pub fn build_microvm_from_snapshot(
                 log_jaeger_warning("build_microvm_from_snapshot", format!("Parent (pid={}) waiting for child to exit", getpid()).as_str());
                 wait()
                 .expect("Could not wait for the child");
+                // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
             }
         };
     };
@@ -584,6 +584,134 @@ pub fn build_microvm_from_snapshot(
         mem: guest_memory,
         vm: vmm.vm.fd(),
         event_manager: &mut event_manager,
+        for_each_restored_device: VmResources::update_from_restored_device,
+        vm_resources,
+        instance_id: &instance_info.id,
+    };
+
+    vmm.mmio_device_manager =
+        MMIODeviceManager::restore(mmio_ctor_args, &microvm_state.device_states)
+            .map_err(MicrovmStateError::RestoreDevices)?;
+    vmm.emulate_serial_init()?;
+
+
+    // Move vcpus to their own threads and start their state machine in the 'Paused' state.
+    vmm.start_vcpus(
+        vcpus,
+        seccomp_filters
+            .get("vcpu")
+            .ok_or(BuildMicrovmFromSnapshotError::MissingVcpuSeccompFilters)?
+            .clone(),
+    )?;
+
+    // Restore vcpus kvm state.
+    vmm.restore_vcpu_states(microvm_state.vcpu_states)?;
+
+    let vmm = Arc::new(Mutex::new(vmm));
+    event_manager.add_subscriber(vmm.clone());
+
+    // Load seccomp filters for the VMM thread.
+    // Keep this as the last step of the building process.
+    seccompiler::apply_filter(
+        seccomp_filters
+            .get("vmm")
+            .ok_or(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters)?,
+    )?;
+
+    match vmm.lock().unwrap().resume_vm() {
+        Ok(_) => log_jaeger_warning("run_with_snapshot", "vm is running"),
+        Err(_) => panic!("Could not resume VM")
+    };
+
+    // Run the EventManager that drives everything in the microVM.
+    loop {
+        event_manager
+            .run()
+            .expect("Failed to start the event manager");
+
+        if let Some(exit_code) = vmm.lock().unwrap().shutdown_exit_code() {
+            return Ok(exit_code);
+        };
+    }
+}
+
+/// Builds and starts a microVM based on the provided MicrovmState.
+///
+/// An `Arc` reference of the built `Vmm` is also plugged in the `EventManager`, while another
+/// is returned.
+#[allow(clippy::too_many_arguments)]
+pub fn build_microvm_from_snapshot(
+    instance_info: &InstanceInfo,
+    event_manager: &mut EventManager,
+    microvm_state: MicrovmState,
+    guest_memory: GuestMemoryMmap,
+    uffd: Option<Uffd>,
+    track_dirty_pages: bool,
+    seccomp_filters: &BpfThreadMap,
+    vm_resources: &mut VmResources,
+) -> std::result::Result<Arc<Mutex<Vmm>>, BuildMicrovmFromSnapshotError> {
+
+    let vcpu_count = u8::try_from(microvm_state.vcpu_states.len()).map_err(|_| {
+        BuildMicrovmFromSnapshotError::TooManyVCPUs(microvm_state.vcpu_states.len())
+    })?;
+
+    // Build Vmm.
+    let (mut vmm, vcpus) = create_vmm_and_vcpus(
+        instance_info,
+        event_manager,
+        guest_memory.clone(),
+        uffd,
+        track_dirty_pages,
+        vcpu_count,
+    )?;
+
+    #[cfg(target_arch = "x86_64")]
+    // Check if we need to scale the TSC.
+    // We start by checking if the CPU model in the snapshot is
+    // the same as this host's. If they are the same, we don't
+    // need to do anything else.
+    if !is_same_model(&microvm_state.vcpu_states[0].cpuid) {
+        // Extract the TSC freq from the state.
+        // No TSC freq in snapshot means we have to fail-fast.
+        let state_tsc = microvm_state.vcpu_states[0]
+            .tsc_khz
+            .ok_or(BuildMicrovmFromSnapshotError::TscFrequencyNotPresent)?;
+
+        // Scale the TSC frequency for all VCPUs, if needed.
+        if vcpus[0].kvm_vcpu.is_tsc_scaling_required(state_tsc)? {
+            for vcpu in &vcpus {
+                vcpu.kvm_vcpu.set_tsc_khz(state_tsc)?;
+            }
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        let mpidrs = construct_kvm_mpidrs(&microvm_state.vcpu_states);
+        // Restore kvm vm state.
+        vmm.vm.restore_state(&mpidrs, &microvm_state.vm_state)?;
+    }
+
+    // Restore kvm vm state.
+    #[cfg(target_arch = "x86_64")]
+    vmm.vm.restore_state(&microvm_state.vm_state)?;
+
+    vm_resources.update_vm_config(&VmUpdateConfig {
+        vcpu_count: Some(vcpu_count),
+        mem_size_mib: Some(microvm_state.vm_info.mem_size_mib as usize),
+        smt: Some(microvm_state.vm_info.smt),
+        cpu_template: Some(microvm_state.vm_info.cpu_template),
+        track_dirty_pages: Some(track_dirty_pages),
+    })?;
+
+    // Restore the boot source config paths.
+    vm_resources.set_boot_source_config(microvm_state.vm_info.boot_source);
+
+    // Restore devices states.
+    let mmio_ctor_args = MMIODevManagerConstructorArgs {
+        mem: guest_memory,
+        vm: vmm.vm.fd(),
+        event_manager,
         for_each_restored_device: VmResources::update_from_restored_device,
         vm_resources,
         instance_id: &instance_info.id,
