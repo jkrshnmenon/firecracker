@@ -359,7 +359,10 @@ impl KvmVcpu {
         };
         match self.fd.set_guest_debug(&debug_struct) {
             Ok(()) => (),
-            Err(e) => log_jaeger_warning("enable_debug", format!("{:?}", e).as_str())
+            Err(e) => {
+                log_jaeger_warning("enable_debug", format!("{:?}", e.to_string()).as_str());
+                panic!("Could not enable debug");
+            }
         };
     }
 
