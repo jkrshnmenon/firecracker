@@ -19,7 +19,7 @@ use kvm_bindings::{
     kvm_guest_debug, kvm_guest_debug_arch,
 };
 use kvm_ioctls::{VcpuExit, VcpuFd};
-use logger::{error, warn, IncMetric, METRICS};
+use logger::{error, warn, IncMetric, METRICS, log_jaeger_warning};
 //use logger::log_jaeger_warning;
 use versionize::{VersionMap, Versionize, VersionizeError, VersionizeResult};
 use versionize_derive::Versionize;
@@ -357,7 +357,10 @@ impl KvmVcpu {
                 debugreg: [0, 0, 0, 0, 0, 0, 0, 0],
             },
         };
-        self.fd.set_guest_debug(&debug_struct).unwrap();
+        match self.fd.set_guest_debug(&debug_struct) {
+            Ok(()) => (),
+            Err(e) => log_jaeger_warning("enable_debug", format!("{:?}", e).as_str())
+        };
     }
 
     /// Disable the debug mode
