@@ -21,6 +21,7 @@ versionize = "0.1.6"
 versionize_derive = "0.1.4"
 vm-allocator = "0.1.0"
 vm-superio = "0.7.0"
+nix = "0.18.0"
 
 arch = { path = "../arch" }
 devices = { path = "../devices" }
