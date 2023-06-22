@@ -553,6 +553,7 @@ impl Vmm {
             .collect::<std::result::Result<Vec<VcpuResponse>, RecvTimeoutError>>()
             .map_err(|_| RestoreVcpusError::UnexpectedVcpuResponse)?;
 
+        log_jaeger_warning("restore_vcpu_states", "Done");
         for response in vcpu_responses.into_iter() {
             match response {
                 VcpuResponse::RestoredState => Ok(()),
