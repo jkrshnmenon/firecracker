@@ -582,12 +582,14 @@ pub fn build_microvm_from_snapshot(
                 break;
             },
             Parent {child: _} => {
+                log_jaeger_warning("build_microvm_from_snapshot", format!("Parent (pid={}) waiting for child to exit", getpid()).as_str());
                 wait()
                 .expect("Could not wait for the child");
             }
         };
     };
 
+    log_jaeger_warning("build_microvm_from_snapshot", format!("Child (pid={}) continuing", getpid()).as_str());
     // Move vcpus to their own threads and start their state machine in the 'Paused' state.
     vmm.start_vcpus(
         vcpus,
