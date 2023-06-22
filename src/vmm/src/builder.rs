@@ -24,7 +24,7 @@ use linux_loader::loader::elf::Elf as Loader;
 #[cfg(target_arch = "aarch64")]
 use linux_loader::loader::pe::PE as Loader;
 use linux_loader::loader::KernelLoader;
-use logger::{error, warn, METRICS};
+use logger::{error, warn, METRICS, log_jaeger_warning};
 use seccompiler::BpfThreadMap;
 use snapshot::Persist;
 use userfaultfd::Uffd;
@@ -53,6 +53,10 @@ use crate::vstate::system::KvmContext;
 use crate::vstate::vcpu::{Vcpu, VcpuConfig};
 use crate::vstate::vm::Vm;
 use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver};
+
+use nix::sys::wait::wait;
+use nix::unistd::ForkResult::{Child, Parent};
+use nix::unistd::{fork, getpid};
 
 /// Errors associated with starting the instance.
 #[derive(Debug)]
@@ -568,6 +572,21 @@ pub fn build_microvm_from_snapshot(
         MMIODeviceManager::restore(mmio_ctor_args, &microvm_state.device_states)
             .map_err(MicrovmStateError::RestoreDevices)?;
     vmm.emulate_serial_init()?;
+
+
+    loop {
+        let pid = fork();
+        match pid.expect("Fork failed: Unable to create child process!") {
+            Child => {
+                log_jaeger_warning("build_microvm_from_snapshot", format!("Created child with PID: {}", getpid()).as_str());
+                break;
+            },
+            Parent {child: _} => {
+                wait()
+                .expect("Could not wait for the child");
+            }
+        };
+    };
 
     // Move vcpus to their own threads and start their state machine in the 'Paused' state.
     vmm.start_vcpus(
