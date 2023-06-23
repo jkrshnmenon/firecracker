@@ -507,19 +507,25 @@ pub fn build_microvm_from_snapshot2(
         let pid = fork();
         match pid.expect("Fork failed: Unable to create child process!") {
             Child => {
-                log_jaeger_warning("build_microvm_from_snapshot", format!("Created child with PID: {}", getpid()).as_str());
+                log_jaeger_warning("build_microvm_from_snapshot", "Created child with");
                 break;
             },
             Parent {child: _} => {
-                log_jaeger_warning("build_microvm_from_snapshot", format!("Parent (pid={}) waiting for child to exit", getpid()).as_str());
+                log_jaeger_warning("build_microvm_from_snapshot", "Parent waiting for child to exit");
+                // unsafe {
+                //     let mut status:i32 = 0;
+                //     let status_ptr: *mut i32 = &mut status;
+                //     libc::wait(status_ptr);
+                // }
                 wait()
                 .expect("Could not wait for the child");
+                log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
             }
         };
     };
 
-    log_jaeger_warning("build_microvm_from_snapshot", format!("Child (pid={}) continuing", getpid()).as_str());
+    log_jaeger_warning("build_microvm_from_snapshot", "Child continuing");
 
     let mut event_manager = EventManager::new().unwrap();
 

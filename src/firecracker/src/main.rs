@@ -577,7 +577,7 @@ fn run_with_snapshot(
     let snapshot_file_metadata = snapshot_file.metadata().unwrap();
     let snapshot_len = snapshot_file_metadata.len() as usize;
     snapshot_file.seek(SeekFrom::Start(0)).unwrap();
-    log_jaeger_warning("run_with_snapshot", format!("Snapshot len = {}", snapshot_len).as_str());
+    // log_jaeger_warning("run_with_snapshot", format!("Snapshot len = {}", snapshot_len).as_str());
     let microvm_state: MicrovmState = Snapshot::load(
         &mut snapshot_file,
         snapshot_len,
