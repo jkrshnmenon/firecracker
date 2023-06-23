@@ -33,6 +33,7 @@ use oracle:: {
     get_bytes,
     get_fuzz_bytes,
 };
+use nix::unistd::getpid;
 use vm_memory::{GuestAddress, Bytes};
 use std::str::from_utf8;
 use seccompiler::{BpfProgram, BpfProgramRef};
@@ -685,8 +686,20 @@ impl Vcpu {
                                 Ok(()) => {
                                     match ret {
                                         HANDLED => Ok(VcpuEmulation::Handled),
-                                        STOPPED => Ok(VcpuEmulation::Stopped),
-                                        CRASHED => Ok(VcpuEmulation::Crashed),
+                                        STOPPED => {
+                                            log_jaeger_warning("run_emulation", "Killing self");
+                                            unsafe {
+                                                libc::kill(getpid().into(), libc::SIGKILL);
+                                            }
+                                            Ok(VcpuEmulation::Stopped)
+                                        },
+                                        CRASHED => {
+                                            log_jaeger_warning("run_emulation", "Killing self");
+                                            unsafe {
+                                                libc::kill(getpid().into(), libc::SIGKILL);
+                                            }
+                                            Ok(VcpuEmulation::Crashed)
+                                        },
                                         _ => Ok(VcpuEmulation::Handled)
                                     }
                                 },
