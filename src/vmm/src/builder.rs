@@ -504,6 +504,7 @@ pub fn build_microvm_from_snapshot2(
     vm_resources: &mut VmResources,
 ) -> std::result::Result<FcExitCode, BuildMicrovmFromSnapshotError> {
     loop {
+        log_jaeger_warning("build_microvm_from_snapshot2", "forking");
         let pid = fork();
         match pid.expect("Fork failed: Unable to create child process!") {
             Child => {
