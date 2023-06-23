@@ -56,7 +56,7 @@ use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitC
 
 use nix::sys::wait::wait;
 use nix::unistd::ForkResult::{Child, Parent};
-use nix::unistd::{fork, getpid};
+use nix::unistd::fork;
 
 /// Errors associated with starting the instance.
 #[derive(Debug)]

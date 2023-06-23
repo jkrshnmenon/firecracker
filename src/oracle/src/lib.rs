@@ -41,8 +41,8 @@ pub const FUZZ_LEN: usize = 1024;
 
 pub const BP_BYTES: [u8; BP_LEN] = [0xcc];
 
-const ORACLE_IP: &str = "localhost";
-const ORACLE_PORT: i32 = 31337;
+// const ORACLE_IP: &str = "localhost";
+// const ORACLE_PORT: i32 = 31337;
 const ORACLE_SOCKET: &str = "/tmp/FC_SOCK";
 
 // static mut STREAM: Option<TcpStream> = None;
