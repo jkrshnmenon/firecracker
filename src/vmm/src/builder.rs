@@ -54,10 +54,10 @@ use crate::vstate::vcpu::{Vcpu, VcpuConfig};
 use crate::vstate::vm::Vm;
 use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitCode};
 
-use nix::sys::wait::wait;
+// use nix::sys::wait::wait;
 use nix::unistd::ForkResult::{Child, Parent};
 use nix::unistd::fork;
-use ctrlc;
+use std::os::unix::net::UnixStream;
 
 /// Errors associated with starting the instance.
 #[derive(Debug)]
@@ -504,6 +504,9 @@ pub fn build_microvm_from_snapshot2(
     seccomp_filters: &BpfThreadMap,
     vm_resources: &mut VmResources,
 ) -> std::result::Result<FcExitCode, BuildMicrovmFromSnapshotError> {
+    let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
+        .expect("Could not create parent socket");
+    log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
     loop {
         log_jaeger_warning("build_microvm_from_snapshot2", "forking");
         let pid = fork();
@@ -514,17 +517,15 @@ pub fn build_microvm_from_snapshot2(
             },
             Parent {child: _} => {
                 log_jaeger_warning("build_microvm_from_snapshot", "Parent waiting for child to exit");
-                // unsafe {
-                //     let mut status:i32 = 0;
-                //     let status_ptr: *mut i32 = &mut status;
-                //     libc::wait(status_ptr);
-                // }
-                
+                let mut msg: [u8; 1] = [0];
+                match stream.read_exact(&mut msg) {
+                    Ok(_) => log_jaeger_warning("build_microvm_from_snapshot2", "got a message on socket"),
+                    Err(_e) => {
+                        log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket")
+                    }
+                };
                 // wait()
                 // .expect("Could not wait for the child");
-                ctrlc::set_handler(move || {
-                    log_jaeger_warning("build_microvm_from_snapshot2", "Got SIGINT");
-                }
                 log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
             }
