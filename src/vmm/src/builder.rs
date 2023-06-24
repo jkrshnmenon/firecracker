@@ -57,6 +57,7 @@ use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitC
 use nix::sys::wait::wait;
 use nix::unistd::ForkResult::{Child, Parent};
 use nix::unistd::fork;
+use ctrlc;
 
 /// Errors associated with starting the instance.
 #[derive(Debug)]
@@ -518,8 +519,12 @@ pub fn build_microvm_from_snapshot2(
                 //     let status_ptr: *mut i32 = &mut status;
                 //     libc::wait(status_ptr);
                 // }
-                wait()
-                .expect("Could not wait for the child");
+                
+                // wait()
+                // .expect("Could not wait for the child");
+                ctrlc::set_handler(move || {
+                    log_jaeger_warning("build_microvm_from_snapshot2", "Got SIGINT");
+                }
                 log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
             }
