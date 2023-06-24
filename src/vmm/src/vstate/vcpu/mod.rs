@@ -33,7 +33,7 @@ use oracle:: {
     get_bytes,
     get_fuzz_bytes,
 };
-use nix::unistd::{getpid, getppid};
+use nix::unistd::{getpid};
 use vm_memory::{GuestAddress, Bytes};
 use std::str::from_utf8;
 use seccompiler::{BpfProgram, BpfProgramRef};
@@ -687,18 +687,18 @@ impl Vcpu {
                                     match ret {
                                         HANDLED => Ok(VcpuEmulation::Handled),
                                         STOPPED => {
-                                            log_jaeger_warning("run_emulation", "Killing parent");
+                                            // log_jaeger_warning("run_emulation", "Killing parent");
                                             unsafe {
-                                                libc::kill(getppid().into(), libc::SIGTERM);
+                                                // libc::kill(getppid().into(), libc::SIGTERM);
                                                 log_jaeger_warning("run_emulation", "Killing self");
                                                 libc::kill(getpid().into(), libc::SIGKILL);
                                             }
                                             Ok(VcpuEmulation::Stopped)
                                         },
                                         CRASHED => {
-                                            log_jaeger_warning("run_emulation", "Killing parent");
+                                            // log_jaeger_warning("run_emulation", "Killing parent");
                                             unsafe {
-                                                libc::kill(getppid().into(), libc::SIGTERM);
+                                                // libc::kill(getppid().into(), libc::SIGTERM);
                                                 log_jaeger_warning("run_emulation", "Killing self");
                                                 libc::kill(getpid().into(), libc::SIGKILL);
                                             }
