@@ -31,6 +31,7 @@ const _PGDSHIFT: u32 = PDPSHIFT + 9;
 static mut DOJOSNOOP_CR3: Option<u64> = None;
 static mut DOJOSNOOP_EXEC: Option<u64> = None;
 static mut DOJOSNOOP_EXIT: Option<u64> = None;
+static mut DOJOSNOOP_BUFFER: Option<u64> = None;
 
 /// We use this variable to identify the length of the breakpoint instruction
 /// In the current situation, it is only one byte "\xcc"
@@ -375,18 +376,37 @@ pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
 }
 
 
+/// Here, we request the address to inject data into
+pub fn get_fuzz_addr() -> u64 {
+    let msg = format!("ADDR\n");
+    match send_message(&msg) {
+        Ok(()) => println!("Sent message: ADDR"),
+        Err(e) => panic!("{}", e)
+    };
+
+    let addr:u64 = match recvline() {
+        Ok(data) => data.parse::<u64>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            0
+        }
+    };
+    addr
+}
+
+
 /// We will try to request the DOJOSNOOP variables from the oracle
 /// Returns true if we got all three variables
 /// false otherwise
 pub fn get_init() -> bool {
     let id: u32 = process::id();
-    let msg = format!("INIT:0x0:0x0:0x0:{}\n", id);
+    let msg = format!("INIT:0x0:0x0:0x0:0x0:{}\n", id);
     match send_message(&msg) {
         Ok(()) => println!("Sent message: INIT"),
         Err(e) => panic!("{}", e)
     };
-    let mut values: [u64; 3] = [0; 3];
-    for i in 0..3 {
+    let mut values: [u64; 4] = [0; 4];
+    for i in 0..4 {
         match recvline() {
             Ok(data) => values[i] = data.parse::<u64>().unwrap(),
             Err(e) => println!("Could not decode: {}", e)
@@ -406,6 +426,7 @@ pub fn get_init() -> bool {
             DOJOSNOOP_CR3 = Some(values[0]);
             DOJOSNOOP_EXEC = Some(values[1]);
             DOJOSNOOP_EXIT = Some(values[2]);
+            DOJOSNOOP_BUFFER = Some(values[3]);
         }
         // log_jaeger_warning("get_init", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}\tEXIT = {:#016x}",
         // values[0], values[1], values[2]).as_str());
@@ -419,10 +440,11 @@ fn send_init() {
     // log_jaeger_warning("send_init", "Sending DOJOSNOOP to oracle");
     let pid: u32 = process::id();
     let msg = unsafe {
-        format!("INIT:{:#016x}:{:#016x}:{:#016x}:{}\n",
+        format!("INIT:{:#016x}:{:#016x}:{:#016x}:{:#016x}:{}\n",
             DOJOSNOOP_CR3.clone().unwrap(),
             DOJOSNOOP_EXEC.clone().unwrap(),
             DOJOSNOOP_EXIT.clone().unwrap(),
+            DOJOSNOOP_BUFFER.clone().unwrap(),
             pid
         )
     };
@@ -430,8 +452,8 @@ fn send_init() {
         Ok(()) => println!("Sent message: INIT"),
         Err(e) => panic!("{}", e)
     };
-    let mut values: [u64; 3] = [0; 3];
-    for i in 0..3 {
+    let mut values: [u64; 4] = [0; 4];
+    for i in 0..4 {
         match recvline() {
             Ok(data) => values[i] = {
                 data.parse::<u64>().unwrap()
@@ -443,13 +465,14 @@ fn send_init() {
 }
 
 
-pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
+pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, rdi: u64) -> u64 {
     unsafe {
         if DOJOSNOOP_CR3.is_none() {
             assert!(DOJOSNOOP_EXEC.is_none(), "dojosnoop_exec isn't None");
             DOJOSNOOP_CR3 = Some(cr3);
             DOJOSNOOP_EXEC = Some(rip);
-            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}", cr3, rip).as_str());
+            DOJOSNOOP_BUFFER = Some(rdi);
+            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}\tBUFFER = {:#016x}", cr3, rip, rdi).as_str());
             return INIT;
         } else if DOJOSNOOP_EXIT.is_none() {
             log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] EXIT = {:#016x}", rip).as_str());
