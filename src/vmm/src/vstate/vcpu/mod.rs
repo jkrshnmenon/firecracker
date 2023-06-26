@@ -27,6 +27,7 @@ use oracle:: {
     pagewalk,
     init_handshake,
     handle_kvm_exit_debug,
+    set_buffer,
     notify_exec,
     notify_exit,
     get_offsets,
@@ -576,8 +577,22 @@ impl Vcpu {
                            regs.rip, phys_addr, sregs.cr3).as_str()
                     );
 
-                    match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3 & !(0xfff), regs.rdi) {
+                    match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3 & !(0xfff)) {
                         INIT => {
+                            log_jaeger_warning("run_emulation", format!("RDI={:#016x}", regs.rdi).as_str());
+                            let mut phys_buffer = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+                            if phys_buffer == 0 {
+                                // Fuck it, we'll walk the page tables
+                                match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        phys_buffer = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                    },
+                                    None => {
+                                        log_jaeger_warning("run_emulation", "No memory map");
+                                    }
+                                }
+                            };
+                            set_buffer(phys_buffer);
                             regs.rip = regs.rip + 1;
                             match self.kvm_vcpu.set_regs(regs) {
                                 Ok(()) => {
