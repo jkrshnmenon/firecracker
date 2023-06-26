@@ -465,14 +465,20 @@ fn send_init() {
 }
 
 
-pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, rdi: u64) -> u64 {
+pub fn set_buffer(rdi: u64) {
+    unsafe {
+        DOJOSNOOP_BUFFER = Some(rdi)
+    };
+}
+
+
+pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
     unsafe {
         if DOJOSNOOP_CR3.is_none() {
             assert!(DOJOSNOOP_EXEC.is_none(), "dojosnoop_exec isn't None");
             DOJOSNOOP_CR3 = Some(cr3);
             DOJOSNOOP_EXEC = Some(rip);
-            DOJOSNOOP_BUFFER = Some(rdi);
-            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}\tBUFFER = {:#016x}", cr3, rip, rdi).as_str());
+            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}", cr3, rip).as_str());
             return INIT;
         } else if DOJOSNOOP_EXIT.is_none() {
             log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] EXIT = {:#016x}", rip).as_str());
