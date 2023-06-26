@@ -579,7 +579,7 @@ impl Vcpu {
 
                     match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3 & !(0xfff)) {
                         INIT => {
-                            log_jaeger_warning("run_emulation", format!("RDI={:#016x}", regs.rdi).as_str());
+                            log_jaeger_warning("run_emulation", format!("RDI = {:#016x}", regs.rdi).as_str());
                             let mut phys_buffer = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
                             if phys_buffer == 0 {
                                 // Fuck it, we'll walk the page tables

@@ -466,6 +466,7 @@ fn send_init() {
 
 
 pub fn set_buffer(rdi: u64) {
+    log_jaeger_warning("set_buffer", format!("[INIT] BUFFER = {:#016x}", rdi).as_str());
     unsafe {
         DOJOSNOOP_BUFFER = Some(rdi)
     };
