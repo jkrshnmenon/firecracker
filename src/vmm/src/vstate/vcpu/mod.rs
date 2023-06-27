@@ -22,7 +22,7 @@ use logger::{error, info, IncMetric, METRICS,
 use oracle:: {
 //     BP_LEN,
     BP_BYTES,
-    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY, SNAPSHOT, FUZZ,
+    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
     init_handshake,
@@ -579,6 +579,21 @@ impl Vcpu {
 
                     match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3 & !(0xfff)) {
                         INIT => {
+                            regs.rip = regs.rip + 1;
+                            match self.kvm_vcpu.set_regs(regs) {
+                                Ok(()) => {
+                                    Ok(VcpuEmulation::Handled)
+                                },
+                                Err(e) => {
+                                    log_jaeger_warning(
+                                        "run_emulation", 
+                                        format!("Could not set registers: {}", e).as_str()
+                                    );
+                                    Ok(VcpuEmulation::Stopped)
+                                }
+                            }
+                        },
+                        INIT_BUFFER => {
                             log_jaeger_warning("run_emulation", format!("RDI = {:#016x}", regs.rdi).as_str());
                             let mut phys_buffer = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
                             if phys_buffer == 0 {

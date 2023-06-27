@@ -16,6 +16,7 @@ pub const MODIFY:u64 = 4;
 pub const UNMODIFY:u64 = 5;
 pub const SNAPSHOT: u64 = 6;
 pub const FUZZ:u64 = 7;
+pub const INIT_BUFFER:u64 = 8;
 
 pub const HANDLED:u64 = 0;
 pub const STOPPED:u64 = 1;
@@ -470,6 +471,7 @@ pub fn set_buffer(rdi: u64) {
     unsafe {
         DOJOSNOOP_BUFFER = Some(rdi)
     };
+    send_init();
 }
 
 
@@ -484,8 +486,10 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
         } else if DOJOSNOOP_EXIT.is_none() {
             log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT] EXIT = {:#016x}", rip).as_str());
             DOJOSNOOP_EXIT = Some(rip);
-            send_init();
             return INIT_COMPLETE;
+        } else if DOJOSNOOP_BUFFER.is_none() {
+            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT BUFFER] RIP = {:#016x}", rip).as_str());
+            return INIT_BUFFER;
         } else if DOJOSNOOP_CR3 == Some(cr3) {
             if DOJOSNOOP_EXEC == Some(rip) {
                 log_jaeger_warning("handle_kvm_exit_debug", format!("EXEC = {:#016x}", rip).as_str());
