@@ -275,7 +275,7 @@ pub fn notify_exit(prog_path: &str, exit_code: u64) -> u64 {
     // log_jaeger_warning("notify_exit", "Notifying");
     let msg = format!("EXIT:{}={}\n", prog_path, exit_code);
     match send_message(&msg) {
-        Ok(()) => ()
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
     let mut ret:u64 = HANDLED;
