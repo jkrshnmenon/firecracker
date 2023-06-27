@@ -792,23 +792,24 @@ impl Vcpu {
                             // Which means that we can also request the offsets after we've injected the fuzzing input
                             // But first things first, let's get the fuzzing input
                             let (fuzz_bytes, sz) = get_fuzz_bytes();
-                            let fuzz_addr_virt = match get_fuzz_addr() {
-                                x if x == 0 => regs.rdi,
+                            let fuzz_addr = match get_fuzz_addr() {
                                 x if x != 0 => x,
-                                _ => 0
-                            };
-                            let mut fuzz_addr = self.kvm_vcpu.guest_virt_to_phys(fuzz_addr_virt as u64);
+                                _ => {
+                                    let mut addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
 
-                            if fuzz_addr == 0 {
-                                // Fuck it, we'll walk the page tables
-                                match &self.kvm_vcpu.guest_memory_map {
-                                    Some(gm) => {
-                                        fuzz_addr = pagewalk(gm.clone(), fuzz_addr_virt, sregs.cr3);
-                                    },
-                                    None => {
-                                        log_jaeger_warning("run_emulation", "No memory map");
-                                    }
-                                }
+                                    if addr == 0 {
+                                        // Fuck it, we'll walk the page tables
+                                        match &self.kvm_vcpu.guest_memory_map {
+                                            Some(gm) => {
+                                                addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                            },
+                                            None => {
+                                                log_jaeger_warning("run_emulation", "No memory map");
+                                            }
+                                        }
+                                    };
+                                    addr
+                                },
                             };
                             // log_jaeger_warning("handle_kvm_exit", format!("Writing payload into {:#016x}", fuzz_addr).as_str());
                             match &self.kvm_vcpu.guest_memory_map {
