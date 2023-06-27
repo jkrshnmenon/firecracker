@@ -234,7 +234,7 @@ pub fn init_handshake() -> std::io::Result<()> {
 pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> (bool, bool, bool) {
     let msg = format!("{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3);
     match send_message(&msg) {
-        Ok(()) => println!("Sent breakpoint addr: {:#016x}", pc_addr),
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
     let is_first: bool =  match recvline() {
@@ -265,7 +265,7 @@ pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> (bool, bool, bool
 pub fn notify_exec(prog_path: &str) {
     let msg = format!("EXEC:{}\n", prog_path);
     match send_message(&msg) {
-        Ok(()) => println!("Sent exec path: {}", prog_path),
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
 }
@@ -275,7 +275,7 @@ pub fn notify_exit(prog_path: &str, exit_code: u64) -> u64 {
     // log_jaeger_warning("notify_exit", "Notifying");
     let msg = format!("EXIT:{}={}\n", prog_path, exit_code);
     match send_message(&msg) {
-        Ok(()) => println!("Sent exit code: {}", exit_code),
+        Ok(()) => ()
         Err(e) => panic!("{}", e)
     };
     let mut ret:u64 = HANDLED;
@@ -296,7 +296,7 @@ pub fn get_offsets() -> Vec<u64> {
     // log_jaeger_warning("get_offsets", "Getting REQ");
     let msg = format!("REQ\n");
     match send_message(&msg) {
-        Ok(()) => println!("Sent message: REQ"),
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
     // log_jaeger_warning("get_offsets", "Getting values");
@@ -327,7 +327,7 @@ pub fn get_bytes() -> [u8; BP_LEN] {
     // log_jaeger_warning("get_bytes", "Getting BYTES");
     let msg = format!("BYTES\n");
     match send_message(&msg) {
-        Ok(()) => println!("Sent message: BYTES"),
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
     let mut values: [u8; BP_LEN] = [0; BP_LEN];
@@ -353,7 +353,7 @@ pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
     // log_jaeger_warning("get_fuzz_bytes", "Getting fuzzing bytes");
     let msg = format!("FUZZ\n");
     match send_message(&msg) {
-        Ok(()) => println!("Sent message: FUZZ"),
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
     let sz:usize= match recvline() {
@@ -381,7 +381,7 @@ pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
 pub fn get_fuzz_addr() -> u64 {
     let msg = format!("ADDR\n");
     match send_message(&msg) {
-        Ok(()) => println!("Sent message: ADDR"),
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
 
@@ -403,7 +403,7 @@ pub fn get_init() -> bool {
     let id: u32 = process::id();
     let msg = format!("INIT:0x0:0x0:0x0:0x0:{}\n", id);
     match send_message(&msg) {
-        Ok(()) => println!("Sent message: INIT"),
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
     let mut values: [u64; 4] = [0; 4];
@@ -450,7 +450,7 @@ fn send_init() {
         )
     };
     match send_message(&msg) {
-        Ok(()) => println!("Sent message: INIT"),
+        Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
     let mut values: [u64; 4] = [0; 4];
@@ -505,9 +505,11 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
     // Handle this situation properly now
     let (is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3);
     if take_snapshot == true {
+        log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
         return SNAPSHOT;
     }
     if fuzz == true {
+        log_jaeger_warning("handle_kvm_exit_debug", format!("FUZZ = {:#016x}", rip).as_str());
         return FUZZ;
     }
     if is_first == true {
