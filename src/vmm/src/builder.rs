@@ -5,7 +5,7 @@
 
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Mutex};
 
@@ -490,6 +490,99 @@ pub enum BuildMicrovmFromSnapshotError {
     SeccompFiltersInternal(#[from] seccompiler::InstallationError),
 }
 
+
+/// Wrapper for sending messages to Oracle
+fn send_message(msg: &str, stream: &mut UnixStream) -> std::io::Result<()> {
+    match stream.write(msg.as_bytes()) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            println!("Could not send message: {}", e);
+            Err(e)
+        }
+    }
+}
+
+// Wrapper for receiving one byte from Oracle
+fn recv_byte(stream: &mut UnixStream) -> std::io::Result<u8> {
+    let mut msg: [u8; 1] = [0];     
+    match stream.read_exact(&mut msg) {
+        Ok(_) => Ok(msg[0]),            
+        Err(e) => {
+            println!("Error reading from server: {}", e);
+            Err(e)
+        }
+    }
+}
+
+/// Wrapper for reading one line from Oracle
+fn recvline(stream: &mut UnixStream) -> std::io::Result<String> {
+    // log_jaeger_warning("recvline", "Reading line");
+    let mut data: Vec<u8> = Vec::new(); 
+    loop {
+        match recv_byte(stream) {
+            Ok(byte) => {
+                match byte == 10 {              
+                    true => break,                  
+                    false => data.push(byte)        
+                };
+            },
+            Err(e) => {
+                println!("Error reading from server: {}", e);
+            }
+        };
+    };
+    let s = String::from_utf8(data).expect("Found invalid UTF-8");
+    // println!("Received line: {:?}", s);
+    // log_jaeger_warning("recvline", "Finished");
+    Ok(s)
+}
+
+/// Here, we request the fuzzing input from the Oracle
+pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 1024], usize) {
+    // log_jaeger_warning("get_fuzz_bytes", "Getting fuzzing bytes");
+    let msg = format!("FUZZ\n");
+    match send_message(&msg, stream) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+    let sz:usize = match recvline(stream) {
+        Ok(data) => data.parse::<usize>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            0
+        }
+    };
+    log_jaeger_warning("get_fuzz_bytes", format!("Got size = {}", sz).as_str());
+    let mut values:[u8; 1024] = [0; 1024];
+    for i in 0..sz {
+        match recv_byte(stream) {
+            Ok(byte) => {values[i] = byte},
+            Err(e) => println!("Error reading fuzz from server: {}", e)
+        }
+    };
+    // println!("Received values: {:?}", values);
+    // log_jaeger_warning("get_fuzz_bytes", "Finished");
+    (values, sz)
+}
+
+/// Here, we request the address to inject data into
+pub fn get_fuzz_addr(stream: &mut UnixStream) -> u64 {
+    let msg = format!("ADDR\n");
+    match send_message(&msg, stream) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+
+    let addr:u64 = match recvline(stream) {
+        Ok(data) => data.parse::<u64>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            0
+        }
+    };
+    addr
+}
+
 /// Builds and starts a microVM based on the provided MicrovmState.
 ///
 /// An `Arc` reference of the built `Vmm` is also plugged in the `EventManager`, while another
@@ -532,7 +625,17 @@ pub fn build_microvm_from_snapshot2(
         };
     };
 
-    log_jaeger_warning("build_microvm_from_snapshot", "Child continuing");
+    log_jaeger_warning("build_microvm_from_snapshot", "Child modifying memory");
+    let mut child_stream = UnixStream::connect("/tmp/CHILD_SOCK")
+        .expect("Could not create parent socket");
+
+    let (fuzz_bytes, sz) = get_fuzz_bytes(&mut child_stream);
+    let fuzz_addr = get_fuzz_addr(&mut child_stream);
+
+    guest_memory.write_slice(&fuzz_bytes[..sz], GuestAddress(fuzz_addr))
+        .expect("Failed to write slice");
+    log_jaeger_warning("build_microvm_from_snapshot", "Child modified memory");
+
 
     let mut event_manager = EventManager::new().unwrap();
 
