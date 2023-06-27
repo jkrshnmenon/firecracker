@@ -363,7 +363,7 @@ pub fn get_fuzz_bytes() -> ([u8; FUZZ_LEN], usize) {
             0
         }
     };
-    // log_jaeger_warning("get_fuzz_bytes", format!("Got size = {}", sz).as_str());
+    log_jaeger_warning("get_fuzz_bytes", format!("Got size = {}", sz).as_str());
     let mut values:[u8; FUZZ_LEN] = [0; FUZZ_LEN];
     for i in 0..sz {
         match recv_byte() {

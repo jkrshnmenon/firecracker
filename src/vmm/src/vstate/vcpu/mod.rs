@@ -826,7 +826,7 @@ impl Vcpu {
                                     addr
                                 },
                             };
-                            // log_jaeger_warning("handle_kvm_exit", format!("Writing payload into {:#016x}", fuzz_addr).as_str());
+                            log_jaeger_warning("handle_kvm_exit", format!("Writing payload into {:#016x}", fuzz_addr).as_str());
                             match &self.kvm_vcpu.guest_memory_map {
                                 Some(gm) => {
                                     gm.write_slice(&fuzz_bytes[..sz], GuestAddress(fuzz_addr))
