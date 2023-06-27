@@ -429,8 +429,8 @@ pub fn get_init() -> bool {
             DOJOSNOOP_EXIT = Some(values[2]);
             DOJOSNOOP_BUFFER = Some(values[3]);
         }
-        // log_jaeger_warning("get_init", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}\tEXIT = {:#016x}",
-        // values[0], values[1], values[2]).as_str());
+        log_jaeger_warning("get_init", format!("[INIT] CR3 = {:#016x}\tEXEC = {:#016x}\tEXIT = {:#016x}\t BUFFER = {:#016x}",
+        values[0], values[1], values[2], values[3]).as_str());
     }
     flag
 }
