@@ -554,6 +554,9 @@ pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 1024], usize) {
     };
     log_jaeger_warning("get_fuzz_bytes", format!("Got size = {}", sz).as_str());
     let mut values:[u8; 1024] = [0; 1024];
+    if sz == 0 {
+        return (values, sz);
+    }
     for i in 0..sz {
         match recv_byte(stream) {
             Ok(byte) => {values[i] = byte},
@@ -632,9 +635,11 @@ pub fn build_microvm_from_snapshot2(
     let (fuzz_bytes, sz) = get_fuzz_bytes(&mut child_stream);
     let fuzz_addr = get_fuzz_addr(&mut child_stream);
 
-    guest_memory.write_slice(&fuzz_bytes[..sz], GuestAddress(fuzz_addr))
-        .expect("Failed to write slice");
-    log_jaeger_warning("build_microvm_from_snapshot", "Child modified memory");
+    if sz > 0 {
+        guest_memory.write_slice(&fuzz_bytes[..sz], GuestAddress(fuzz_addr))
+            .expect("Failed to write slice");
+        log_jaeger_warning("build_microvm_from_snapshot", "Child modified memory");
+    }
 
 
     let mut event_manager = EventManager::new().unwrap();
