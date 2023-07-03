@@ -55,8 +55,8 @@ use crate::vstate::vm::Vm;
 use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitCode};
 
 // use nix::sys::wait::wait;
-use nix::unistd::ForkResult::{Child, Parent};
-use nix::unistd::fork;
+use nix::unistd::ForkResult;
+use nix::unistd::{fork};
 use std::os::unix::net::UnixStream;
 
 /// Errors associated with starting the instance.
@@ -602,16 +602,18 @@ pub fn build_microvm_from_snapshot2(
     log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
     loop {
         log_jaeger_warning("build_microvm_from_snapshot2", "forking");
-        let pid = fork();
-        match pid.expect("Fork failed: Unable to create child process!") {
-            Child => {
-                log_jaeger_warning("build_microvm_from_snapshot", "Created child with");
+        match fork(){
+            Ok(ForkResult::Child) => {
+                log_jaeger_warning("build_microvm_from_snapshot", "Created child");
                 break;
             },
-            Parent {child: _} => {
+            Ok(ForkResult::Parent {child, .. }) => {
+                log_jaeger_warning("build_microvm_from_snapshot", "Parent sending child PID");
+                send_message(format!("PID={}", child).as_str(), &mut stream)
+                .expect("Failed to send child PID");
+
                 log_jaeger_warning("build_microvm_from_snapshot", "Parent waiting for child to exit");
-                let mut msg: [u8; 1] = [0];
-                match stream.read_exact(&mut msg) {
+                match recv_byte(&mut stream) {
                     Ok(_) => log_jaeger_warning("build_microvm_from_snapshot2", "got a message on socket"),
                     Err(_e) => {
                         log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket")
@@ -621,7 +623,8 @@ pub fn build_microvm_from_snapshot2(
                 // .expect("Could not wait for the child");
                 log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
-            }
+            },
+            Err(_) => panic!("Fork failed")
         };
     };
 
