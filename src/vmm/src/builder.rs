@@ -57,6 +57,7 @@ use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitC
 // use nix::sys::wait::wait;
 use nix::unistd::ForkResult;
 use nix::unistd::{fork};
+use nix::sys::signal::{self, Signal};
 use std::os::unix::net::UnixStream;
 
 /// Errors associated with starting the instance.
@@ -622,6 +623,7 @@ pub fn build_microvm_from_snapshot2(
                         log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket")
                     }
                 };
+                signal::kill(child, Signal::SIGTERM).unwrap();
                 // wait()
                 // .expect("Could not wait for the child");
                 log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
