@@ -55,9 +55,18 @@ use crate::vstate::vm::Vm;
 use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitCode};
 
 // use nix::sys::wait::wait;
+<<<<<<< HEAD
 use nix::unistd::ForkResult;
 use nix::unistd::{fork};
 use nix::sys::signal::{self, Signal};
+||||||| parent of 08c32f7e (parent send kill signal)
+use nix::unistd::ForkResult::{Child, Parent};
+use nix::unistd::fork;
+=======
+use nix::unistd::ForkResult;
+use nix::unistd::fork;
+use nix::sys::signal::{self, Signal};
+>>>>>>> 08c32f7e (parent send kill signal)
 use std::os::unix::net::UnixStream;
 
 /// Errors associated with starting the instance.
