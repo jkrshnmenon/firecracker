@@ -572,7 +572,7 @@ pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 1024], usize) {
     if sz > new_sz {
         for i in 0..(sz-new_sz) {
             match recv_byte(stream) {
-                Ok(byte) => {values[i] = byte},
+                Ok(byte) => (),
                 Err(e) => println!("Error reading fuzz from server: {}", e)
             };
         };
@@ -615,7 +615,7 @@ pub fn build_microvm_from_snapshot2(
     vm_resources: &mut VmResources,
 ) -> std::result::Result<FcExitCode, BuildMicrovmFromSnapshotError> {
     let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
-        .expect("Could not create parent socket");
+        .expect("Could not connect to parent socket");
     log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
     let mut ctr = 0;
     let mut pids = Vec::new();
@@ -639,7 +639,10 @@ pub fn build_microvm_from_snapshot2(
                     Err(_e) => {
                         log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket");
                         // signal::kill(child, Signal::SIGTERM).unwrap();
-                        wait();
+                        let last_pid = pids.pop().unwrap();
+                        log_jaeger_warning("build_microvm_from_snapshot2", format!("Waiting for child to exit: {}", last_pid).as_str());
+                        waitpid(last_pid, None);
+                        log_jaeger_warning("build_microvm_from_snapshot2", "Continuing");
                         continue;
                     }
                 };
@@ -664,7 +667,7 @@ pub fn build_microvm_from_snapshot2(
 
     log_jaeger_warning("build_microvm_from_snapshot", "Child modifying memory");
     let mut child_stream = UnixStream::connect("/tmp/CHILD_SOCK")
-        .expect("Could not create parent socket");
+        .expect("Could not connect to child socket");
 
     let (fuzz_bytes, sz) = get_fuzz_bytes(&mut child_stream);
     let fuzz_addr = get_fuzz_addr(&mut child_stream);
