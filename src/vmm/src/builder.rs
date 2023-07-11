@@ -54,7 +54,7 @@ use crate::vstate::vcpu::{Vcpu, VcpuConfig};
 use crate::vstate::vm::Vm;
 use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitCode};
 
-// use nix::sys::wait::wait;
+use nix::sys::wait::{waitpid, wait};
 use nix::unistd::ForkResult;
 use nix::unistd::{fork};
 use nix::sys::signal::{self, Signal};
@@ -558,15 +558,28 @@ pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 1024], usize) {
     if sz == 0 {
         return (values, sz);
     }
-    for i in 0..sz {
+
+    let mut new_sz = sz;
+    if sz >= 1024 {
+        new_sz = 1023;
+    }
+    for i in 0..new_sz {
         match recv_byte(stream) {
             Ok(byte) => {values[i] = byte},
             Err(e) => println!("Error reading fuzz from server: {}", e)
         }
     };
+    if sz > new_sz {
+        for i in 0..(sz-new_sz) {
+            match recv_byte(stream) {
+                Ok(byte) => {values[i] = byte},
+                Err(e) => println!("Error reading fuzz from server: {}", e)
+            };
+        };
+    };
     // println!("Received values: {:?}", values);
     // log_jaeger_warning("get_fuzz_bytes", "Finished");
-    (values, sz)
+    (values, new_sz)
 }
 
 /// Here, we request the address to inject data into
@@ -604,6 +617,8 @@ pub fn build_microvm_from_snapshot2(
     let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
         .expect("Could not create parent socket");
     log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
+    let mut ctr = 0;
+    let mut pids = Vec::new();
     loop {
         log_jaeger_warning("build_microvm_from_snapshot2", "forking");
         match fork(){
@@ -612,7 +627,9 @@ pub fn build_microvm_from_snapshot2(
                 break;
             },
             Ok(ForkResult::Parent {child, .. }) => {
-                log_jaeger_warning("build_microvm_from_snapshot", "Parent sending child PID");
+                ctr += 1;
+                pids.push(child);
+                log_jaeger_warning("build_microvm_from_snapshot", format!("Parent sending child PID:{}", child).as_str());
                 send_message(format!("PID={}", child).as_str(), &mut stream)
                 .expect("Failed to send child PID");
 
@@ -620,16 +637,28 @@ pub fn build_microvm_from_snapshot2(
                 match recv_byte(&mut stream) {
                     Ok(_) => log_jaeger_warning("build_microvm_from_snapshot2", "got a message on socket"),
                     Err(_e) => {
-                        log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket")
+                        log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket");
+                        // signal::kill(child, Signal::SIGTERM).unwrap();
+                        wait();
+                        continue;
                     }
                 };
                 signal::kill(child, Signal::SIGTERM).unwrap();
-                // wait()
-                // .expect("Could not wait for the child");
+                if ctr % 10000 == 0 {
+                    log_jaeger_warning("build_microvm_from_snapshot", "Fork failed. Reap all children");
+                    for x in &pids {
+                        log_jaeger_warning("build_microvm_from_snapshot", format!("Reap pid={}", x).as_str());
+                        waitpid(*x, None);
+                    }
+                    pids.clear();
+                    log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
+                } 
                 log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
             },
-            Err(_) => panic!("Fork failed")
+            Err(_) => {
+                panic!("Fork failed")
+            }
         };
     };
 
