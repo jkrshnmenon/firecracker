@@ -59,6 +59,8 @@ use nix::unistd::ForkResult;
 use nix::unistd::{fork};
 use nix::sys::signal::{self, Signal};
 use std::os::unix::net::UnixStream;
+/// FUCK THIS
+pub const BP_LEN: usize = 1;
 
 /// Errors associated with starting the instance.
 #[derive(Debug)]
@@ -600,6 +602,64 @@ pub fn get_fuzz_addr(stream: &mut UnixStream) -> u64 {
     addr
 }
 
+
+/// The Oracle will send us the physical addresses for the program
+pub fn get_offsets(stream: &mut UnixStream) -> Vec<u64> {
+    // log_jaeger_warning("get_offsets", "Getting REQ");
+    let msg = format!("REQ\n");
+    match send_message(&msg, stream) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+    // log_jaeger_warning("get_offsets", "Getting values");
+    let mut values: Vec<u64> = Vec::new();
+    loop {
+        // log_jaeger_warning("get_offsets", "loop getting values");
+        match recvline(stream) {
+            Ok(data) => {
+                match data.parse::<u64>() {
+                    Ok(x) => values.push(x),
+                    Err(_e) => break,
+                }
+            },
+            Err(e) => {
+                println!("Could not decode: {}", e);
+                break;
+            }
+        };
+    }
+    // println!("Received values: {:?}", values);
+    // log_jaeger_warning("get_offsets", "Finished");
+    values
+}
+
+
+/// The address of the current RIP and the physical address will be sent to the Oracle
+/// The Oracle will send us the bytes that should be replaced
+pub fn get_bytes(stream: &mut UnixStream) -> [u8; BP_LEN] {
+    // log_jaeger_warning("get_bytes", "Getting BYTES");
+    let msg = format!("BYTES\n");
+    match send_message(&msg, stream) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+    let mut values: [u8; BP_LEN] = [0; BP_LEN];
+    for i in 0..BP_LEN {
+        match recvline(stream) {
+            Ok(data) => {
+                match data.parse::<u8>() {
+                    Ok(x) => {values[i] = x},
+                    Err(_e) => break
+                }
+            },
+            Err(e) => println!("Could not decode: {}", e)
+        };
+    }
+    // println!("Received values: {:?}", values);
+    // log_jaeger_warning("get_bytes", "Finished");
+    values
+}
+
 /// Builds and starts a microVM based on the provided MicrovmState.
 ///
 /// An `Arc` reference of the built `Vmm` is also plugged in the `EventManager`, while another
@@ -621,6 +681,12 @@ pub fn build_microvm_from_snapshot2(
     let mut pids = Vec::new();
     loop {
         // log_jaeger_warning("build_microvm_from_snapshot2", "forking");
+        let offsets = get_offsets(&mut stream);
+        for off in offsets.iter() {
+            let fix_bytes = get_bytes(&mut stream);
+            guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
+                .expect("Failed to write slice");
+        }
         match fork(){
             Ok(ForkResult::Child) => {
                 // log_jaeger_warning("build_microvm_from_snapshot", "Created child");
