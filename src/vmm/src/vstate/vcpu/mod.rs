@@ -34,8 +34,8 @@ use oracle:: {
     get_bytes,
     get_fuzz_bytes,
     get_fuzz_addr,
-    get_translation,
-    send_translation,
+    // get_translation,
+    // send_translation,
 };
 use nix::unistd::{getpid};
 use vm_memory::{GuestAddress, Bytes};
