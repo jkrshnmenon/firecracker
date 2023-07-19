@@ -396,56 +396,6 @@ pub fn get_fuzz_addr() -> u64 {
 }
 
 
-/// Here we receive the translation requests
-pub fn get_translation() -> Vec<u64> {
-    let msg: String = format!("TRANSLATE\n");
-    match send_message(&msg) {
-        Ok(()) => (),
-        Err(e) => panic!("{}", e)
-    };
-
-    let mut values: Vec<u64> = Vec::new();
-    loop {
-        // log_jaeger_warning("get_offsets", "loop getting values");
-        match recvline() {
-            Ok(data) => {
-                match data.parse::<u64>() {
-                    Ok(x) => values.push(x),
-                    Err(_e) => break,
-                }
-            },
-            Err(e) => {
-                println!("Could not decode: {}", e);
-                break;
-            }
-        };
-    }
-    values
-}
-
-
-/// Here we respond with the physical addresses
-pub fn send_translation(addr_list: Vec<u64>) {
-    for addr in addr_list.iter() {
-        let msg: String = format!("{}\n", addr);
-        match send_message(&msg) {
-            Ok(()) => (),
-            Err(e) => panic!("{}", e)
-        };
-    }
-    let done: String = format!("DONE\n");
-    match send_message(&done) {
-        Ok(()) => (),
-        Err(e) => panic!("{}", e)
-    };
-
-    match recv_byte() {
-        Ok(_byte) => {},
-        Err(e) => println!("Error reading fuzz from server: {}", e)
-    };
-
-}
-
 /// We will try to request the DOJOSNOOP variables from the oracle
 /// Returns true if we got all three variables
 /// false otherwise
@@ -562,16 +512,17 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
         log_jaeger_warning("handle_kvm_exit_debug", format!("FUZZ = {:#016x}", rip).as_str());
         return FUZZ;
     }
-    if is_first == true {
-        // If we get here, it means that we've hit the breakpoint injected into
-        // the entry point of the current program.
-        // Tell FC that we need to modify the program
-        log_jaeger_warning("handle_kvm_exit_debug", format!("MODIFY = {:#016x}", rip).as_str());
-        return MODIFY;
-    } else {
-        // If we get here, it means that we've hit an injected breakpoint
-        // Tell FC that we need to unmodify
-        log_jaeger_warning("handle_kvm_exit_debug", format!("UNMODIFY = {:#016x}", rip).as_str());
-        return UNMODIFY;
-    }
+
+    // if is_first == true {
+    //     // If we get here, it means that we've hit the breakpoint injected into
+    //     // the entry point of the current program.
+    //     // Tell FC that we need to modify the program
+    //     log_jaeger_warning("handle_kvm_exit_debug", format!("MODIFY = {:#016x}", rip).as_str());
+    //     return MODIFY;
+    // } else {
+    //     // If we get here, it means that we've hit an injected breakpoint
+    //     // Tell FC that we need to unmodify
+    log_jaeger_warning("handle_kvm_exit_debug", format!("UNMODIFY = {:#016x}", rip).as_str());
+    return UNMODIFY;
+    // }
 }
