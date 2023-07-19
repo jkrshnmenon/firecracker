@@ -570,9 +570,9 @@ pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 1024], usize) {
         }
     };
     if sz > new_sz {
-        for i in 0..(sz-new_sz) {
+        for _i in 0..(sz-new_sz) {
             match recv_byte(stream) {
-                Ok(byte) => (),
+                Ok(_byte) => (),
                 Err(e) => println!("Error reading fuzz from server: {}", e)
             };
         };
