@@ -438,6 +438,12 @@ pub fn send_translation(addr_list: Vec<u64>) {
         Ok(()) => (),
         Err(e) => panic!("{}", e)
     };
+
+    match recv_byte() {
+        Ok(_byte) => {},
+        Err(e) => println!("Error reading fuzz from server: {}", e)
+    };
+
 }
 
 /// We will try to request the DOJOSNOOP variables from the oracle
