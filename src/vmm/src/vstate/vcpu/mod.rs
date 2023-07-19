@@ -756,6 +756,7 @@ impl Vcpu {
                             let addr:Vec<u64> = get_translation();
                             let mut translated:Vec<u64> = Vec::<u64>::new();
                             for i in addr.iter() {
+                                log_jaeger_warning("run_emulation", format!("Translating {:#016x}", i).as_str());
                                 let mut phys_page = self.kvm_vcpu.guest_virt_to_phys(*i as u64);
 
                                 if phys_page == 0 {
