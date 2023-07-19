@@ -620,10 +620,10 @@ pub fn build_microvm_from_snapshot2(
     let mut ctr = 0;
     let mut pids = Vec::new();
     loop {
-        log_jaeger_warning("build_microvm_from_snapshot2", "forking");
+        // log_jaeger_warning("build_microvm_from_snapshot2", "forking");
         match fork(){
             Ok(ForkResult::Child) => {
-                log_jaeger_warning("build_microvm_from_snapshot", "Created child");
+                // log_jaeger_warning("build_microvm_from_snapshot", "Created child");
                 break;
             },
             Ok(ForkResult::Parent {child, .. }) => {
@@ -640,23 +640,23 @@ pub fn build_microvm_from_snapshot2(
                         log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket");
                         // signal::kill(child, Signal::SIGTERM).unwrap();
                         let last_pid = pids.pop().unwrap();
-                        log_jaeger_warning("build_microvm_from_snapshot2", format!("Waiting for child to exit: {}", last_pid).as_str());
+                        // log_jaeger_warning("build_microvm_from_snapshot2", format!("Waiting for child to exit: {}", last_pid).as_str());
                         waitpid(last_pid, None);
-                        log_jaeger_warning("build_microvm_from_snapshot2", "Continuing");
+                        // log_jaeger_warning("build_microvm_from_snapshot2", "Continuing");
                         continue;
                     }
                 };
                 signal::kill(child, Signal::SIGTERM).unwrap();
                 if ctr % 10000 == 0 {
-                    log_jaeger_warning("build_microvm_from_snapshot", "Fork failed. Reap all children");
+                    // log_jaeger_warning("build_microvm_from_snapshot", "Reap all children");
                     for x in &pids {
-                        log_jaeger_warning("build_microvm_from_snapshot", format!("Reap pid={}", x).as_str());
+                        // log_jaeger_warning("build_microvm_from_snapshot", format!("Reap pid={}", x).as_str());
                         waitpid(*x, None);
                     }
                     pids.clear();
-                    log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
+                    // log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
                 } 
-                log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
+                // log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
             },
             Err(_) => {
