@@ -54,9 +54,9 @@ use crate::vstate::vcpu::{Vcpu, VcpuConfig};
 use crate::vstate::vm::Vm;
 use crate::{device_manager, Error, EventManager, Vmm, VmmEventsObserver, FcExitCode};
 
-use nix::sys::wait::{waitpid, wait};
+use nix::sys::wait::waitpid;
 use nix::unistd::ForkResult;
-use nix::unistd::{fork};
+use nix::unistd::fork;
 use nix::sys::signal::{self, Signal};
 use std::os::unix::net::UnixStream;
 /// FUCK THIS
@@ -511,7 +511,7 @@ fn recv_byte(stream: &mut UnixStream) -> std::io::Result<u8> {
     match stream.read_exact(&mut msg) {
         Ok(_) => Ok(msg[0]),            
         Err(e) => {
-            println!("Error reading from server: {}", e);
+            println!("Error reading byte from server: {}", e);
             Err(e)
         }
     }
@@ -530,7 +530,8 @@ fn recvline(stream: &mut UnixStream) -> std::io::Result<String> {
                 };
             },
             Err(e) => {
-                println!("Error reading from server: {}", e);
+                println!("Error reading line from server: {}", e);
+                break;
             }
         };
     };
@@ -568,14 +569,20 @@ pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 1024], usize) {
     for i in 0..new_sz {
         match recv_byte(stream) {
             Ok(byte) => {values[i] = byte},
-            Err(e) => println!("Error reading fuzz from server: {}", e)
+            Err(e) => {
+                println!("Error reading fuzz from server: {}", e);
+                break;
+            }
         }
     };
     if sz > new_sz {
         for _i in 0..(sz-new_sz) {
             match recv_byte(stream) {
                 Ok(_byte) => (),
-                Err(e) => println!("Error reading fuzz from server: {}", e)
+                Err(e) => {
+                    println!("Error reading fuzz from server: {}", e);
+                    break;
+                }
             };
         };
     };
@@ -681,12 +688,6 @@ pub fn build_microvm_from_snapshot2(
     let mut pids = Vec::new();
     loop {
         // log_jaeger_warning("build_microvm_from_snapshot2", "forking");
-        let offsets = get_offsets(&mut stream);
-        for off in offsets.iter() {
-            let fix_bytes = get_bytes(&mut stream);
-            guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
-                .expect("Failed to write slice");
-        }
         match fork(){
             Ok(ForkResult::Child) => {
                 // log_jaeger_warning("build_microvm_from_snapshot", "Created child");
@@ -722,6 +723,15 @@ pub fn build_microvm_from_snapshot2(
                     pids.clear();
                     // log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
                 } 
+                // log_jaeger_warning("build_microvm_from_snapshot", "Getting offsets");
+                let offsets = get_offsets(&mut stream);
+                for off in offsets.iter() {
+                    // log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
+                    let fix_bytes = get_bytes(&mut stream);
+                    guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
+                        .expect("Failed to write slice");
+                }
+                log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
                 // log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
             },
