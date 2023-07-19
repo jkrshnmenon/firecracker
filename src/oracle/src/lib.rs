@@ -503,7 +503,7 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
 
     // We've already initialized all the required variables.
     // Handle this situation properly now
-    let (is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3);
+    let (_is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3);
     if take_snapshot == true {
         log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
         return SNAPSHOT;
