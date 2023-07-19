@@ -396,6 +396,50 @@ pub fn get_fuzz_addr() -> u64 {
 }
 
 
+/// Here we receive the translation requests
+pub fn get_translation() -> Vec<u64> {
+    let msg: String = format!("TRANSLATE\n");
+    match send_message(&msg) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+
+    let mut values: Vec<u64> = Vec::new();
+    loop {
+        // log_jaeger_warning("get_offsets", "loop getting values");
+        match recvline() {
+            Ok(data) => {
+                match data.parse::<u64>() {
+                    Ok(x) => values.push(x),
+                    Err(_e) => break,
+                }
+            },
+            Err(e) => {
+                println!("Could not decode: {}", e);
+                break;
+            }
+        };
+    }
+    values
+}
+
+
+/// Here we respond with the physical addresses
+pub fn send_translation(addr_list: Vec<u64>) {
+    for addr in addr_list.iter() {
+        let msg: String = format!("{}\n", addr);
+        match send_message(&msg) {
+            Ok(()) => (),
+            Err(e) => panic!("{}", e)
+        };
+    }
+    let done: String = format!("DONE\n");
+    match send_message(&done) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+}
+
 /// We will try to request the DOJOSNOOP variables from the oracle
 /// Returns true if we got all three variables
 /// false otherwise

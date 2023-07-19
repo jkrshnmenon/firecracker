@@ -34,6 +34,8 @@ use oracle:: {
     get_bytes,
     get_fuzz_bytes,
     get_fuzz_addr,
+    get_translation,
+    send_translation,
 };
 use nix::unistd::{getpid};
 use vm_memory::{GuestAddress, Bytes};
@@ -748,6 +750,28 @@ impl Vcpu {
                             }
                         },
                         MODIFY => {
+                            /*
+                             * First we do the translation for the oracle
+                             */
+                            let addr:Vec<u64> = get_translation();
+                            let mut translated:Vec<u64> = Vec::<u64>::new();
+                            for i in addr.iter() {
+                                let mut phys_page = self.kvm_vcpu.guest_virt_to_phys(*i as u64);
+
+                                if phys_page == 0 {
+                                    // Fuck it, we'll walk the page tables
+                                    match &self.kvm_vcpu.guest_memory_map {
+                                        Some(gm) => {
+                                            phys_page = pagewalk(gm.clone(), *i, sregs.cr3);
+                                        },
+                                        None => {
+                                            log_jaeger_warning("run_emulation", "No memory map");
+                                        }
+                                    }
+                                };
+                                translated.push(phys_page)
+                            }
+                            send_translation(translated);
                             /*
                              * Here we need to get the offsets to modify from Oracle
                              * We insert the BP_BYTES into the physical addresses
