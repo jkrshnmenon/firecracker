@@ -710,7 +710,7 @@ pub fn build_microvm_from_snapshot2(
                         // log_jaeger_warning("build_microvm_from_snapshot2", format!("Waiting for child to exit: {}", last_pid).as_str());
                         waitpid(last_pid, None);
                         // log_jaeger_warning("build_microvm_from_snapshot2", "Continuing");
-                        continue;
+                        // continue;
                     }
                 };
                 signal::kill(child, Signal::SIGTERM).unwrap();
