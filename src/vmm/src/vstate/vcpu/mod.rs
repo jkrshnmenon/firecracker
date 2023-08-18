@@ -489,9 +489,11 @@ impl Vcpu {
     ///
     /// Returns error or enum specifying whether emulation was handled or interrupted.
     pub fn run_emulation(&self) -> Result<VcpuEmulation> {
+        // log_jaeger_warning("run_emulation", "calling emulate");
         match self.emulate() {
             Ok(run) => match run {
                 VcpuExit::MmioRead(addr, data) => {
+                    // log_jaeger_warning("run_emulation", "MmioRead");
                     if let Some(mmio_bus) = &self.kvm_vcpu.mmio_bus {
                         mmio_bus.read(addr, data);
                         METRICS.vcpu.exit_mmio_read.inc();
@@ -499,6 +501,7 @@ impl Vcpu {
                     Ok(VcpuEmulation::Handled)
                 }
                 VcpuExit::MmioWrite(addr, data) => {
+                    // log_jaeger_warning("run_emulation", "MmioWrite");
                     if let Some(mmio_bus) = &self.kvm_vcpu.mmio_bus {
                         mmio_bus.write(addr, data);
                         METRICS.vcpu.exit_mmio_write.inc();
@@ -506,10 +509,12 @@ impl Vcpu {
                     Ok(VcpuEmulation::Handled)
                 }
                 VcpuExit::Hlt => {
+                    // log_jaeger_warning("run_emulation", "hlt");
                     info!("Received KVM_EXIT_HLT signal");
                     Ok(VcpuEmulation::Stopped)
                 }
                 VcpuExit::Shutdown => {
+                    // log_jaeger_warning("run_emulation", "shutdown");
                     info!("Received KVM_EXIT_SHUTDOWN signal");
                     Ok(VcpuEmulation::Stopped)
                 }
@@ -538,6 +543,7 @@ impl Vcpu {
                 }
                 VcpuExit::SystemEvent(event_type, event_flags) => match event_type {
                     KVM_SYSTEM_EVENT_RESET | KVM_SYSTEM_EVENT_SHUTDOWN => {
+                        // log_jaeger_warning("run_emulation", "system event");
                         info!(
                             "Received KVM_SYSTEM_EVENT: type: {}, event: {}",
                             event_type, event_flags
@@ -557,6 +563,7 @@ impl Vcpu {
                     }
                 },
                 VcpuExit::Debug(_arch) => {
+                    // log_jaeger_warning("run_emulation", "Debug");
                     let mut regs = self.kvm_vcpu.get_regs().unwrap();
                     let sregs = self.kvm_vcpu.get_sregs().unwrap();
                     let mut phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
