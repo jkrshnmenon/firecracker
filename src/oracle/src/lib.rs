@@ -126,6 +126,15 @@ pub fn pagewalk(gm: GuestMemoryMmap, addr: u64, cr3: u64) -> u64 {
 }
 
 
+/// A function for walking the page tables in aarch64
+pub fn pagewalk_aarch64(gm: GuestMemoryMmap, addr: u64, tcr: u64, ttbr0: u64, ttbr1: u64) -> u64 {
+    log_jaeger_warning("pagewalk_aarch64",
+        format!("Addr={:#016x} TCR={:#016x} TTBR0={:#016x} TTBR1={:#016x}", addr, tcr, ttbr0, ttbr1)
+        .as_str());
+    0 as u64
+}
+
+
 /// Wrapper for sending messages to Oracle
 fn send_message(msg: &str) -> std::io::Result<()> {
     unsafe {
