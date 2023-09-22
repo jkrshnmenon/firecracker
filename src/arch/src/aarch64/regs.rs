@@ -172,6 +172,9 @@ macro_rules! arm64_sys_reg {
 // https://elixir.bootlin.com/linux/v4.20.17/source/arch/arm64/include/asm/sysreg.h#L135
 arm64_sys_reg!(MPIDR_EL1, 3, 0, 0, 0, 5);
 arm64_sys_reg!(MIDR_EL1, 3, 0, 0, 0, 0);
+// https://elixir.bootlin.com/linux/v4.20.17/source/arch/arm64/include/asm/sysreg.h#L340
+// #define SYS_CONTEXTIDR_EL1		sys_reg(3, 0, 13, 0, 1)
+arm64_sys_reg!(CONTEXTIDR, 3, 0, 13, 0, 1);
 
 /// Extract the Manufacturer ID from a VCPU state's registers.
 /// The ID is found between bits 24-31 of MIDR_EL1 register.
@@ -283,6 +286,57 @@ pub fn read_mpidr(vcpu: &VcpuFd) -> Result<u64> {
         Ok(val) => Ok(val.try_into().expect("MPIDR register to be 64 bit")),
     }
 }
+
+/// Jaeger stuff here
+/// Handy function to return the CONTEXTIDR value
+pub fn read_contextidr(vcpu: &VcpuFd) -> Result<u64> {
+    match vcpu.get_one_reg(CONTEXTIDR) {
+        Err(err) => Err(Error::GetSysRegister(err)),
+        Ok(val) => Ok(val.try_into().expect("CONTEXTIDR register to be 64 bit")),
+    }
+}
+
+/// Handy function to return the PC value
+pub fn read_pc(vcpu: &VcpuFd) -> Result<u64> {
+    let off = offset__of!(user_pt_regs, pc);
+    let id = arm64_core_reg_id!(KVM_REG_SIZE_U64, off);
+    let pc = vcpu.get_one_reg(id)
+        .expect("Failed to get PC");
+    Ok(pc as u64)
+}
+
+
+/// Handy function to return the X0 value
+pub fn read_x0(vcpu: &VcpuFd) -> Result<u64> {
+    let off = offset__of!(user_pt_regs, regs);
+    let id = arm64_core_reg_id!(KVM_REG_SIZE_U64, off);
+    let x0 = vcpu.get_one_reg(id)
+        .expect("Failed to get X0");
+    Ok(x0 as u64)
+}
+
+
+/// Handy function to return the X1 value
+pub fn read_x1(vcpu: &VcpuFd) -> Result<u64> {
+    let mut off = offset__of!(user_pt_regs, regs);
+    // Step 8 bytes into the regs structure to get X1
+    off += std::mem::size_of::<u64>();
+
+    let id = arm64_core_reg_id!(KVM_REG_SIZE_U64, off);
+    let x0 = vcpu.get_one_reg(id)
+        .expect("Failed to get X1");
+    Ok(x0 as u64)
+}
+
+/// Handy function to store the PC value
+pub fn write_pc(vcpu: &VcpuFd, value: u64) -> Result<()> {
+    let kreg_off = offset__of!(kvm_regs, regs);
+    let pc = offset__of!(user_pt_regs, pc) + kreg_off;
+    vcpu.set_one_reg(arm64_core_reg_id!(KVM_REG_SIZE_U64, pc), value as u128)
+        .expect("Failed to set PC");
+    Ok(())
+}
+
 
 /// Get the state of the core registers.
 ///
