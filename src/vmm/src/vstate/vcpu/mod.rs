@@ -564,52 +564,81 @@ impl Vcpu {
                 },
                 VcpuExit::Debug(_arch) => {
                     // log_jaeger_warning("run_emulation", "Debug");
-                    let mut regs = self.kvm_vcpu.get_regs().unwrap();
-                    let sregs = self.kvm_vcpu.get_sregs().unwrap();
-                    let mut phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
+                    let mut pc;
+                    let mut page_table;
+                    let mut phys_addr;
+                    #[cfg(target_arch = "x86_64")]
+                    {
+                        let mut regs = self.kvm_vcpu.get_regs().unwrap();
+                        let sregs = self.kvm_vcpu.get_sregs().unwrap();
+                        phys_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rip as u64);
 
-                    if phys_addr == 0 {
-                        // Fuck it, we'll walk the page tables
-                        match &self.kvm_vcpu.guest_memory_map {
-                            Some(gm) => {
-                                phys_addr = pagewalk(gm.clone(), regs.rip, sregs.cr3);
-                            },
-                            None => {
-                                log_jaeger_warning("run_emulation", "No memory map");
+                        if phys_addr == 0 {
+                            // Fuck it, we'll walk the page tables
+                            match &self.kvm_vcpu.guest_memory_map {
+                                Some(gm) => {
+                                    phys_addr = pagewalk(gm.clone(), regs.rip, sregs.cr3);
+                                },
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                }
                             }
-                        }
-                    };
+                        };
+                        pc = regs.rip;
+                        page_table = sregs.cr3;
+                    }
+
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        pc = self.kvm_vcpu.get_pc();
+                        page_table = self.kvm_vcpu.get_contextidr();
+                        phys_addr = self.kvm_vcpu.guest_virt_to_phys(pc);
+                    }
 
                     log_jaeger_warning(
                         "run_emulation",
-                        format!("KVM_EXIT_DEBUG: RIP = {:#016x} | Physical RIP = {:#016x} | CR3 = {:#016x}",
-                           regs.rip, phys_addr, sregs.cr3).as_str()
+                        format!("KVM_EXIT_DEBUG: PC = {:#016x} | Physical RIP = {:#016x} | PAGETABLE = {:#016x}",
+                           pc, phys_addr, page_table).as_str()
                     );
 
-                    match handle_kvm_exit_debug(regs.rip, phys_addr, sregs.cr3 & !(0xfff)) {
+                    match handle_kvm_exit_debug(pc, phys_addr, page_table & !(0xfff)) {
                         INIT => {
-                            regs.rip = regs.rip + 1;
-                            match self.kvm_vcpu.set_regs(regs) {
-                                Ok(()) => {
-                                    Ok(VcpuEmulation::Handled)
-                                },
-                                Err(e) => {
-                                    log_jaeger_warning(
-                                        "run_emulation", 
-                                        format!("Could not set registers: {}", e).as_str()
-                                    );
-                                    Ok(VcpuEmulation::Stopped)
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        Ok(VcpuEmulation::Handled)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
                                 }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + 1;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Handled)
                             }
                         },
                         INIT_BUFFER => {
-                            log_jaeger_warning("run_emulation", format!("RDI = {:#016x}", regs.rdi).as_str());
-                            let mut phys_buffer = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+                            #[cfg(target_arch = "x86_64")]
+                            let dest = regs.rdi;
+                            #[cfg(target_arch = "aarch64")]
+                            let dest = self.kvm_vcpu.get_x0();
+
+                            log_jaeger_warning("run_emulation", format!("DEST = {:#016x}", dest).as_str());
+                            let mut phys_buffer = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
                             if phys_buffer == 0 {
                                 // Fuck it, we'll walk the page tables
                                 match &self.kvm_vcpu.guest_memory_map {
                                     Some(gm) => {
-                                        phys_buffer = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                        phys_buffer = pagewalk(gm.clone(), dest, page_table);
                                     },
                                     None => {
                                         log_jaeger_warning("run_emulation", "No memory map");
@@ -617,34 +646,53 @@ impl Vcpu {
                                 }
                             };
                             set_buffer(phys_buffer);
-                            regs.rip = regs.rip + 1;
-                            match self.kvm_vcpu.set_regs(regs) {
-                                Ok(()) => {
-                                    Ok(VcpuEmulation::Handled)
-                                },
-                                Err(e) => {
-                                    log_jaeger_warning(
-                                        "run_emulation", 
-                                        format!("Could not set registers: {}", e).as_str()
-                                    );
-                                    Ok(VcpuEmulation::Stopped)
+
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        Ok(VcpuEmulation::Handled)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
                                 }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + 1;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Handled)
                             }
                         },
                         INIT_COMPLETE => {
-                            regs.rip = regs.rip + 1;
-                            match self.kvm_vcpu.set_regs(regs) {
-                                Ok(()) => {
-                                    // If we've finished intialization, we can take a snapshot
-                                    Ok(VcpuEmulation::Handled)
-                                },
-                                Err(e) => {
-                                    log_jaeger_warning(
-                                        "run_emulation", 
-                                        format!("Could not set registers: {}", e).as_str()
-                                    );
-                                    Ok(VcpuEmulation::Stopped)
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        // If we've finished intialization, we can take a snapshot
+                                        Ok(VcpuEmulation::Handled)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
                                 }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + 1;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Handled)
                             }
                         },
                         SNAPSHOT => {
@@ -657,11 +705,17 @@ impl Vcpu {
                              */
                             // This should be invoked by the dojosnoop_exec handler.
                             // The string containing the program path should be in RDI.
-                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+                            #[cfg(target_arch = "x86_64")]
+                            let dest = regs.rdi;
+                            #[cfg(target_arch = "aarch64")]
+                            let dest = self.kvm_vcpu.get_x0();
+
+                            log_jaeger_warning("run_emulation", format!("DEST = {:#016x}", dest).as_str());
+                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
                             match &self.kvm_vcpu.guest_memory_map {
                                 Some(gm) => {
                                     if str_addr == 0 {
-                                        str_addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                        str_addr = pagewalk(gm.clone(), dest, page_table);
                                     }
                                     let buf = &mut [0u8; 100];
                                     gm.read_slice(buf, GuestAddress(str_addr))
@@ -676,18 +730,27 @@ impl Vcpu {
                                     log_jaeger_warning("run_emulation", "No memory map");
                                 }
                             };
-                            regs.rip = regs.rip + 1;
-                            match self.kvm_vcpu.set_regs(regs) {
-                                Ok(()) => {
-                                    Ok(VcpuEmulation::Handled)
-                                },
-                                Err(e) => {
-                                    log_jaeger_warning(
-                                        "run_emulation", 
-                                        format!("Could not set registers: {}", e).as_str()
-                                    );
-                                    Ok(VcpuEmulation::Stopped)
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        Ok(VcpuEmulation::Handled)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
                                 }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + 1;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Handled)
                             }
                         },
                         EXIT => {
@@ -696,14 +759,27 @@ impl Vcpu {
                              * And send it to the oracle.
                              */
                             // This should be invoked by the dojosnoop_exec handler.
-                            // The string containing the program path should be in RDI.
-                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
-                            // The exit code should be in rsi
-                            let exit_code: u64 = regs.rsi as u64;
+                            let mut dest;
+                            let mut exit_code;
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                // The string containing the program path should be in RDI.
+                                dest = regs.rdi;
+                                // The exit code should be in rsi
+                                exit_code = regs.rsi as u64;
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                dest = self.kvm_vcpu.get_x0() as u64;
+                                exit_code = self.kvm_vcpu.get_x1() as u64;
+                            }
+
+                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
+
                             let ret = match &self.kvm_vcpu.guest_memory_map {
                                 Some(gm) => {
                                     if str_addr == 0 {
-                                        str_addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                        str_addr = pagewalk(gm.clone(), dest, page_table);
                                     }
                                     let buf = &mut [0u8; 100];
                                     gm.read_slice(buf, GuestAddress(str_addr))
@@ -721,39 +797,38 @@ impl Vcpu {
                                     0x1337
                                 }
                             };
-                            regs.rip = regs.rip + 1;
-                            match self.kvm_vcpu.set_regs(regs) {
-                                Ok(()) => {
-                                    match ret {
-                                        HANDLED => Ok(VcpuEmulation::Handled),
-                                        STOPPED => {
-                                            // log_jaeger_warning("run_emulation", "Killing parent");
-                                            unsafe {
-                                                // libc::kill(getppid().into(), libc::SIGTERM);
-                                                log_jaeger_warning("run_emulation", "Killing self");
-                                                libc::kill(getpid().into(), libc::SIGKILL);
-                                            }
-                                            Ok(VcpuEmulation::Stopped)
-                                        },
-                                        CRASHED => {
-                                            // log_jaeger_warning("run_emulation", "Killing parent");
-                                            unsafe {
-                                                // libc::kill(getppid().into(), libc::SIGTERM);
-                                                log_jaeger_warning("run_emulation", "Killing self");
-                                                libc::kill(getpid().into(), libc::SIGKILL);
-                                            }
-                                            Ok(VcpuEmulation::Crashed)
-                                        },
-                                        _ => Ok(VcpuEmulation::Handled)
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                self.kvm_vcpu.set_regs(regs)
+                                    .expect("Failed to set registers");
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + 1;
+                                self.kvm_vcpu.set_pc(pc);
+                            }
+                            match ret {
+                                HANDLED => Ok(VcpuEmulation::Handled),
+                                STOPPED => {
+                                    // log_jaeger_warning("run_emulation", "Killing parent");
+                                    unsafe {
+                                        // libc::kill(getppid().into(), libc::SIGTERM);
+                                        log_jaeger_warning("run_emulation", "Killing self");
+                                        libc::kill(getpid().into(), libc::SIGKILL);
                                     }
-                                },
-                                Err(e) => {
-                                    log_jaeger_warning(
-                                        "run_emulation", 
-                                        format!("Could not set registers: {}", e).as_str()
-                                    );
                                     Ok(VcpuEmulation::Stopped)
-                                }
+                                },
+                                CRASHED => {
+                                    // log_jaeger_warning("run_emulation", "Killing parent");
+                                    unsafe {
+                                        // libc::kill(getppid().into(), libc::SIGTERM);
+                                        log_jaeger_warning("run_emulation", "Killing self");
+                                        libc::kill(getpid().into(), libc::SIGKILL);
+                                    }
+                                    Ok(VcpuEmulation::Crashed)
+                                },
+                                _ => Ok(VcpuEmulation::Handled)
                             }
                         },
                         MODIFY => {
@@ -796,19 +871,27 @@ impl Vcpu {
                             /*
                              * Reset the RIP and continue execution
                              */
-                            regs.rip = regs.rip;
-
-                            match self.kvm_vcpu.set_regs(regs) {
-                                Ok(()) => {
-                                    Ok(VcpuEmulation::Handled)
-                                },
-                                Err(e) => {
-                                    log_jaeger_warning(
-                                        "run_emulation", 
-                                        format!("Could not set registers: {}", e).as_str()
-                                    );
-                                    Ok(VcpuEmulation::Stopped)
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        Ok(VcpuEmulation::Handled)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
                                 }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + 1;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Handled)
                             }
                         },
                         FUZZ => {
@@ -819,13 +902,17 @@ impl Vcpu {
                             let fuzz_addr = match get_fuzz_addr() {
                                 x if x != 0 => x,
                                 _ => {
-                                    let mut addr = self.kvm_vcpu.guest_virt_to_phys(regs.rdi as u64);
+                                    #[cfg(target_arch = "x86_64")]
+                                    let dest = regs.rdi;
+                                    #[cfg(target_arch = "aarch64")]
+                                    let dest = self.kvm_vcpu.get_x0();
+                                    let mut addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
 
                                     if addr == 0 {
                                         // Fuck it, we'll walk the page tables
                                         match &self.kvm_vcpu.guest_memory_map {
                                             Some(gm) => {
-                                                addr = pagewalk(gm.clone(), regs.rdi, sregs.cr3);
+                                                addr = pagewalk(gm.clone(), dest, page_table);
                                             },
                                             None => {
                                                 log_jaeger_warning("run_emulation", "No memory map");
