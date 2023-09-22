@@ -239,16 +239,25 @@ impl KvmVcpu {
         arch::regs::read_x1(&self.fd).unwrap()
     }
 
+    /// Get the TCR_EL1 value
+    pub fn get_tcr(&self) -> u64 {
+        arch::regs::read_tcr(&self.fd).unwrap()
+    }
+
+    /// Get the TTBR0_EL1 value
+    pub fn get_ttbr0(&self) -> u64 {
+        arch::regs::read_ttbr0(&self.fd).unwrap()
+    }
+
+    /// Get the TTBR1_EL1 value
+    pub fn get_ttbr1(&self) -> u64 {
+        arch::regs::read_ttbr1(&self.fd).unwrap()
+    }
+
     /// Get the contextidr value
     pub fn get_contextidr(&self) -> u64 {
         arch::regs::read_contextidr(&self.fd).unwrap()
     }
-
-    /// Translate a virtual address to physical address in the guest
-    pub fn guest_virt_to_phys(&self, address: u64) -> u64 {
-        0 as u64
-    }
-
 }
 
 /// Structure holding VCPU kvm state.

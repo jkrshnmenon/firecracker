@@ -172,6 +172,15 @@ macro_rules! arm64_sys_reg {
 // https://elixir.bootlin.com/linux/v4.20.17/source/arch/arm64/include/asm/sysreg.h#L135
 arm64_sys_reg!(MPIDR_EL1, 3, 0, 0, 0, 5);
 arm64_sys_reg!(MIDR_EL1, 3, 0, 0, 0, 0);
+
+// https://elixir.bootlin.com/linux/v4.20.17/source/arch/arm64/include/asm/sysreg.h#L182
+// #define SYS_TTBR0_EL1			sys_reg(3, 0, 2, 0, 0)
+arm64_sys_reg!(TTBR0_EL1, 3, 0, 2, 0, 0);
+// #define SYS_TTBR1_EL1			sys_reg(3, 0, 2, 0, 1)
+arm64_sys_reg!(TTBR1_EL1, 3, 0, 2, 0, 1);
+// #define SYS_TCR_EL1			sys_reg(3, 0, 2, 0, 2)
+arm64_sys_reg!(TCR_EL1, 3, 0, 2, 0, 2);
+
 // https://elixir.bootlin.com/linux/v4.20.17/source/arch/arm64/include/asm/sysreg.h#L340
 // #define SYS_CONTEXTIDR_EL1		sys_reg(3, 0, 13, 0, 1)
 arm64_sys_reg!(CONTEXTIDR, 3, 0, 13, 0, 1);
@@ -292,7 +301,30 @@ pub fn read_mpidr(vcpu: &VcpuFd) -> Result<u64> {
 pub fn read_contextidr(vcpu: &VcpuFd) -> Result<u64> {
     match vcpu.get_one_reg(CONTEXTIDR) {
         Err(err) => Err(Error::GetSysRegister(err)),
-        Ok(val) => Ok(val.try_into().expect("CONTEXTIDR register to be 64 bit")),
+        Ok(val) => Ok(val.try_into().expect("TCR_EL1 register to be 64 bit")),
+    }
+}
+/// Handy function to return the TCR_EL1 value
+pub fn read_tcr(vcpu: &VcpuFd) -> Result<u64> {
+    match vcpu.get_one_reg(TCR_EL1) {
+        Err(err) => Err(Error::GetSysRegister(err)),
+        Ok(val) => Ok(val.try_into().expect("TCR_EL1 register to be 64 bit")),
+    }
+}
+
+/// Handy function to return the TTBR0_EL1 value
+pub fn read_ttbr0(vcpu: &VcpuFd) -> Result<u64> {
+    match vcpu.get_one_reg(TTBR0_EL1) {
+        Err(err) => Err(Error::GetSysRegister(err)),
+        Ok(val) => Ok(val.try_into().expect("TTBR0_EL1 register to be 64 bit")),
+    }
+}
+
+/// Handy function to return the TCR_EL1 value
+pub fn read_ttbr1(vcpu: &VcpuFd) -> Result<u64> {
+    match vcpu.get_one_reg(TTBR1_EL1) {
+        Err(err) => Err(Error::GetSysRegister(err)),
+        Ok(val) => Ok(val.try_into().expect("TTBR1_EL1 register to be 64 bit")),
     }
 }
 
