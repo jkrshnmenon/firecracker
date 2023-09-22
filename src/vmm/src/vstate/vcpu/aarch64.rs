@@ -10,10 +10,16 @@ use std::result;
 
 use arch::aarch64::regs::Aarch64Register;
 use kvm_ioctls::*;
-use logger::{error, IncMetric, METRICS};
+use logger::{error, IncMetric, METRICS, log_jaeger_warning};
 use versionize::{VersionMap, Versionize, VersionizeResult};
 use versionize_derive::Versionize;
 use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
+use kvm_bindings::{
+    kvm_guest_debug,
+    KVM_GUESTDBG_ENABLE,
+    KVM_GUESTDBG_USE_SW_BP,
+    kvm_guest_debug_arch,
+};
 
 use crate::vstate::vcpu::VcpuEmulation;
 use crate::vstate::vm::Vm;
@@ -66,6 +72,7 @@ pub struct KvmVcpu {
     pub fd: VcpuFd,
 
     pub mmio_bus: Option<devices::Bus>,
+    pub guest_memory_map: Option<GuestMemoryMmap>,
 
     mpidr: u64,
 }
@@ -84,6 +91,7 @@ impl KvmVcpu {
             index,
             fd: kvm_vcpu,
             mmio_bus: None,
+            guest_memory_map: None,
             mpidr: 0,
         })
     }
@@ -174,6 +182,73 @@ impl KvmVcpu {
         error!("Unexpected exit reason on vcpu run: {:?}", exit);
         Err(super::Error::UnhandledKvmExit(format!("{:?}", exit)))
     }
+
+    /// Enable the debug mode
+    pub fn enable_debug(&self) {
+        let debug_struct = kvm_guest_debug {
+            control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_USE_SW_BP,
+            pad: 0,
+            arch: kvm_guest_debug_arch {
+                dbg_bcr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                dbg_bvr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                dbg_wcr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                dbg_wvr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            },
+        };
+        match self.fd.set_guest_debug(&debug_struct) {
+            Ok(()) => (),
+            Err(e) => {
+                log_jaeger_warning("enable_debug", format!("{:?}", e.to_string()).as_str());
+                panic!("Could not enable debug");
+            }
+        };
+    }
+
+    /// Disable the debug mode
+    pub fn disable_debug(&self) {
+        let debug_struct = kvm_guest_debug {
+            control: 0,
+            pad: 0,
+            arch: kvm_guest_debug_arch {
+                dbg_bcr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                dbg_bvr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                dbg_wcr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                dbg_wvr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             }
+        };
+        self.fd.set_guest_debug(&debug_struct).unwrap();
+    }
+
+    /// Get the PC value
+    pub fn get_pc(&self) -> u64 {
+        arch::regs::read_pc(&self.fd).unwrap()
+    }
+
+    /// Set the PC value
+    pub fn set_pc(&self, value: u64) -> () {
+        arch::regs::write_pc(&self.fd, value).unwrap()
+    }
+
+    /// Get the X0 value
+    pub fn get_x0(&self) -> u64 {
+        arch::regs::read_x0(&self.fd).unwrap()
+    }
+
+    /// Get the X1 value
+    pub fn get_x1(&self) -> u64 {
+        arch::regs::read_x1(&self.fd).unwrap()
+    }
+
+    /// Get the contextidr value
+    pub fn get_contextidr(&self) -> u64 {
+        arch::regs::read_contextidr(&self.fd).unwrap()
+    }
+
+    /// Translate a virtual address to physical address in the guest
+    pub fn guest_virt_to_phys(&self, address: u64) -> u64 {
+        0 as u64
+    }
+
 }
 
 /// Structure holding VCPU kvm state.
