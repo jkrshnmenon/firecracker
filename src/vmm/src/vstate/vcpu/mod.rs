@@ -25,6 +25,7 @@ use oracle:: {
     INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
+    pagewalk_aarch64,
     init_handshake,
     handle_kvm_exit_debug,
     set_buffer,
@@ -565,8 +566,8 @@ impl Vcpu {
                 VcpuExit::Debug(_arch) => {
                     // log_jaeger_warning("run_emulation", "Debug");
                     let mut pc;
-                    let mut page_table;
-                    let mut phys_addr;
+                    let page_table;
+                    let phys_addr;
                     #[cfg(target_arch = "x86_64")]
                     {
                         let mut regs = self.kvm_vcpu.get_regs().unwrap();
@@ -592,7 +593,18 @@ impl Vcpu {
                     {
                         pc = self.kvm_vcpu.get_pc();
                         page_table = self.kvm_vcpu.get_contextidr();
-                        phys_addr = self.kvm_vcpu.guest_virt_to_phys(pc);
+                        let tcr = self.kvm_vcpu.get_tcr();
+                        let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                        let ttbr1 = self.kvm_vcpu.get_ttbr1();
+                        match &self.kvm_vcpu.guest_memory_map {
+                            Some(gm) => {
+                                phys_addr = pagewalk_aarch64(gm.clone(), pc, tcr, ttbr0, ttbr1);
+                            },
+                            None => {
+                                phys_addr = 0;
+                                log_jaeger_warning("run_emulation", "No memory map");
+                            }
+                        };
                     }
 
                     log_jaeger_warning(
@@ -627,24 +639,42 @@ impl Vcpu {
                             }
                         },
                         INIT_BUFFER => {
+                            let phys_buffer;
+                            let dest;
                             #[cfg(target_arch = "x86_64")]
-                            let dest = regs.rdi;
+                            {
+                                dest = regs.rdi;
+                                phys_buffer = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
+                                if phys_buffer == 0 {
+                                    // Fuck it, we'll walk the page tables
+                                    match &self.kvm_vcpu.guest_memory_map {
+                                        Some(gm) => {
+                                            phys_buffer = pagewalk(gm.clone(), dest, page_table);
+                                        },
+                                        None => {
+                                            log_jaeger_warning("run_emulation", "No memory map");
+                                        }
+                                    }
+                                };
+                            }
                             #[cfg(target_arch = "aarch64")]
-                            let dest = self.kvm_vcpu.get_x0();
-
-                            log_jaeger_warning("run_emulation", format!("DEST = {:#016x}", dest).as_str());
-                            let mut phys_buffer = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
-                            if phys_buffer == 0 {
-                                // Fuck it, we'll walk the page tables
+                            {
+                                dest = self.kvm_vcpu.get_x0();
+                                let tcr = self.kvm_vcpu.get_tcr();
+                                let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                                let ttbr1 = self.kvm_vcpu.get_ttbr1();
                                 match &self.kvm_vcpu.guest_memory_map {
                                     Some(gm) => {
-                                        phys_buffer = pagewalk(gm.clone(), dest, page_table);
+                                        phys_buffer = pagewalk_aarch64(gm.clone(), dest, tcr, ttbr0, ttbr1);
                                     },
                                     None => {
+                                        phys_buffer = 0;
                                         log_jaeger_warning("run_emulation", "No memory map");
                                     }
-                                }
-                            };
+                                };
+                            }
+
+                            log_jaeger_warning("run_emulation", format!("DEST = {:#016x}, PHYS_BUFFER = {:#016x}", dest, phys_buffer).as_str());
                             set_buffer(phys_buffer);
 
                             #[cfg(target_arch = "x86_64")]
@@ -705,31 +735,58 @@ impl Vcpu {
                              */
                             // This should be invoked by the dojosnoop_exec handler.
                             // The string containing the program path should be in RDI.
+                            let str_addr;
+                            let dest;
                             #[cfg(target_arch = "x86_64")]
-                            let dest = regs.rdi;
-                            #[cfg(target_arch = "aarch64")]
-                            let dest = self.kvm_vcpu.get_x0();
-
-                            log_jaeger_warning("run_emulation", format!("DEST = {:#016x}", dest).as_str());
-                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
-                            match &self.kvm_vcpu.guest_memory_map {
-                                Some(gm) => {
-                                    if str_addr == 0 {
-                                        str_addr = pagewalk(gm.clone(), dest, page_table);
+                            {
+                                dest = regs.rdi;
+                                str_addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
+                                match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        if str_addr == 0 {
+                                            str_addr = pagewalk(gm.clone(), dest, page_table);
+                                            let buf = &mut [0u8; 100];
+                                            gm.read_slice(buf, GuestAddress(str_addr))
+                                                .expect("Failed to read string");
+                                            let end = buf.iter()
+                                                .position(|&c| c == b'\0')
+                                                .unwrap_or(buf.len());
+                                            let prog_path = from_utf8(&buf[0..end]).unwrap();
+                                            notify_exec(prog_path);
+                                        }
+                                    },
+                                    None => {
+                                        log_jaeger_warning("run_emulation", "No memory map");
                                     }
-                                    let buf = &mut [0u8; 100];
-                                    gm.read_slice(buf, GuestAddress(str_addr))
-                                        .expect("Failed to read string");
-                                    let end = buf.iter()
-                                        .position(|&c| c == b'\0')
-                                        .unwrap_or(buf.len());
-                                    let prog_path = from_utf8(&buf[0..end]).unwrap();
-                                    notify_exec(prog_path);
-                                },
-                                None => {
-                                    log_jaeger_warning("run_emulation", "No memory map");
-                                }
-                            };
+                                };
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                dest = self.kvm_vcpu.get_x0();
+                                let tcr = self.kvm_vcpu.get_tcr();
+                                let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                                let ttbr1 = self.kvm_vcpu.get_ttbr1();
+                                match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        str_addr = pagewalk_aarch64(gm.clone(), dest, tcr, ttbr0, ttbr1);
+                                        let buf = &mut [0u8; 100];
+                                        gm.read_slice(buf, GuestAddress(str_addr))
+                                            .expect("Failed to read string");
+                                        let end = buf.iter()
+                                            .position(|&c| c == b'\0')
+                                            .unwrap_or(buf.len());
+                                        let prog_path = from_utf8(&buf[0..end]).unwrap();
+                                        notify_exec(prog_path);
+                                    },
+                                    None => {
+                                        str_addr = 0;
+                                        log_jaeger_warning("run_emulation", "No memory map");
+                                    }
+                                };
+                            }
+
+                            log_jaeger_warning("run_emulation", format!("DEST = {:#016x}, STR_ADDR = {:#016x}", dest, str_addr).as_str());
+
                             #[cfg(target_arch = "x86_64")]
                             {
                                 regs.rip = regs.rip + 1;
@@ -759,44 +816,69 @@ impl Vcpu {
                              * And send it to the oracle.
                              */
                             // This should be invoked by the dojosnoop_exec handler.
-                            let mut dest;
-                            let mut exit_code;
+                            let dest;
+                            let exit_code;
+                            let str_addr;
+                            let ret;
                             #[cfg(target_arch = "x86_64")]
                             {
                                 // The string containing the program path should be in RDI.
                                 dest = regs.rdi;
                                 // The exit code should be in rsi
                                 exit_code = regs.rsi as u64;
+
+                                str_addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
+
+                                ret = match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        if str_addr == 0 {
+                                            str_addr = pagewalk(gm.clone(), dest, page_table);
+                                        }
+                                        let buf = &mut [0u8; 100];
+                                        gm.read_slice(buf, GuestAddress(str_addr))
+                                            .expect("Failed to read string");
+                                        let end = buf.iter()
+                                            .position(|&c| c == b'\0')
+                                            .unwrap_or(buf.len());
+                                        let prog_path = from_utf8(&buf[0..end]).unwrap();
+                                        // Oracle will let us know if we need to return
+                                        // Handled, Stopped or Crashed
+                                        notify_exit(prog_path, exit_code)
+                                    },
+                                    None => {
+                                        log_jaeger_warning("run_emulation", "No memory map");
+                                        0x1337
+                                    }
+                                };
                             }
+
                             #[cfg(target_arch = "aarch64")]
                             {
                                 dest = self.kvm_vcpu.get_x0() as u64;
                                 exit_code = self.kvm_vcpu.get_x1() as u64;
-                            }
-
-                            let mut str_addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
-
-                            let ret = match &self.kvm_vcpu.guest_memory_map {
-                                Some(gm) => {
-                                    if str_addr == 0 {
-                                        str_addr = pagewalk(gm.clone(), dest, page_table);
+                                let tcr = self.kvm_vcpu.get_tcr();
+                                let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                                let ttbr1 = self.kvm_vcpu.get_ttbr1();
+                                ret = match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        str_addr = pagewalk_aarch64(gm.clone(), dest, tcr, ttbr0, ttbr1);
+                                        let buf = &mut [0u8; 100];
+                                        gm.read_slice(buf, GuestAddress(str_addr))
+                                            .expect("Failed to read string");
+                                        let end = buf.iter()
+                                            .position(|&c| c == b'\0')
+                                            .unwrap_or(buf.len());
+                                        let prog_path = from_utf8(&buf[0..end]).unwrap();
+                                        // Oracle will let us know if we need to return
+                                        // Handled, Stopped or Crashed
+                                        notify_exit(prog_path, exit_code)
+                                    },
+                                    None => {
+                                        log_jaeger_warning("run_emulation", "No memory map");
+                                        0x1337
                                     }
-                                    let buf = &mut [0u8; 100];
-                                    gm.read_slice(buf, GuestAddress(str_addr))
-                                        .expect("Failed to read string");
-                                    let end = buf.iter()
-                                        .position(|&c| c == b'\0')
-                                        .unwrap_or(buf.len());
-                                    let prog_path = from_utf8(&buf[0..end]).unwrap();
-                                    // Oracle will let us know if we need to return
-                                    // Handled, Stopped or Crashed
-                                    notify_exit(prog_path, exit_code)
-                                },
-                                None => {
-                                    log_jaeger_warning("run_emulation", "No memory map");
-                                    0x1337
                                 }
-                            };
+                            }
                             #[cfg(target_arch = "x86_64")]
                             {
                                 regs.rip = regs.rip + 1;
@@ -902,23 +984,40 @@ impl Vcpu {
                             let fuzz_addr = match get_fuzz_addr() {
                                 x if x != 0 => x,
                                 _ => {
+                                    let mut addr = 0;
                                     #[cfg(target_arch = "x86_64")]
-                                    let dest = regs.rdi;
-                                    #[cfg(target_arch = "aarch64")]
-                                    let dest = self.kvm_vcpu.get_x0();
-                                    let mut addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
+                                    {
+                                        let dest = regs.rdi;
+                                        addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
 
-                                    if addr == 0 {
-                                        // Fuck it, we'll walk the page tables
+                                        if addr == 0 {
+                                            // Fuck it, we'll walk the page tables
+                                            match &self.kvm_vcpu.guest_memory_map {
+                                                Some(gm) => {
+                                                    addr = pagewalk(gm.clone(), dest, page_table);
+                                                },
+                                                None => {
+                                                    log_jaeger_warning("run_emulation", "No memory map");
+                                                }
+                                            }
+                                        };
+                                    }
+
+                                    #[cfg(target_arch = "aarch64")]
+                                    {
+                                        let dest = self.kvm_vcpu.get_x0();
+                                        let tcr = self.kvm_vcpu.get_tcr();
+                                        let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                                        let ttbr1 = self.kvm_vcpu.get_ttbr1();
                                         match &self.kvm_vcpu.guest_memory_map {
                                             Some(gm) => {
-                                                addr = pagewalk(gm.clone(), dest, page_table);
+                                                addr = pagewalk_aarch64(gm.clone(), dest, tcr, ttbr0, ttbr1);
                                             },
                                             None => {
                                                 log_jaeger_warning("run_emulation", "No memory map");
                                             }
-                                        }
-                                    };
+                                        };
+                                    }
                                     addr
                                 },
                             };
