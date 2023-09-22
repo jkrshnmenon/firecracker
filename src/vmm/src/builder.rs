@@ -302,7 +302,6 @@ fn create_vmm_and_vcpus(
 
     for i in &mut vcpus {
         i.kvm_vcpu.guest_memory_map = Some(guest_memory.clone());
-        #[cfg(target_arch = "x86_64")]
         i.kvm_vcpu.enable_debug();
     }
     let vmm = Vmm {
