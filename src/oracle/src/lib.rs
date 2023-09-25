@@ -532,7 +532,7 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
             DOJOSNOOP_EXIT = Some(rip);
             return INIT_COMPLETE;
         } else if DOJOSNOOP_BUFFER.is_none() {
-            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT BUFFER] RIP = {:#016x}", rip).as_str());
+            log_jaeger_warning("handle_kvm_exit_debug", format!("[INIT BUFFER] PC = {:#016x}", rip).as_str());
             return INIT_BUFFER;
         } else if DOJOSNOOP_CR3 == Some(cr3) {
             if DOJOSNOOP_EXEC == Some(rip) {
