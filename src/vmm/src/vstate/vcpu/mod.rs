@@ -21,7 +21,7 @@ use logger::{error, info, IncMetric, METRICS,
 };
 #[allow(unused_imports)]
 use oracle:: {
-//     BP_LEN,
+    BP_LEN,
     BP_BYTES,
     INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER,
     HANDLED, STOPPED, CRASHED,
@@ -634,7 +634,7 @@ impl Vcpu {
                             }
                             #[cfg(target_arch = "aarch64")]
                             {
-                                pc = pc + 1;
+                                pc = pc + BP_LEN as u64;
                                 self.kvm_vcpu.set_pc(pc);
                                 Ok(VcpuEmulation::Handled)
                             }
@@ -664,6 +664,7 @@ impl Vcpu {
                                 let tcr = self.kvm_vcpu.get_tcr();
                                 let ttbr0 = self.kvm_vcpu.get_ttbr0();
                                 let ttbr1 = self.kvm_vcpu.get_ttbr1();
+                                log_jaeger_warning("run_emulation", format!("Translating {:#016x}", dest).as_str());
                                 match &self.kvm_vcpu.guest_memory_map {
                                     Some(gm) => {
                                         phys_buffer = pagewalk_aarch64(gm.clone(), dest, tcr, ttbr0, ttbr1);
@@ -696,7 +697,7 @@ impl Vcpu {
                             }
                             #[cfg(target_arch = "aarch64")]
                             {
-                                pc = pc + 1;
+                                pc = pc + BP_LEN as u64;
                                 self.kvm_vcpu.set_pc(pc);
                                 Ok(VcpuEmulation::Handled)
                             }
@@ -721,7 +722,7 @@ impl Vcpu {
                             }
                             #[cfg(target_arch = "aarch64")]
                             {
-                                pc = pc + 1;
+                                pc = pc + BP_LEN as u64;
                                 self.kvm_vcpu.set_pc(pc);
                                 Ok(VcpuEmulation::Handled)
                             }
@@ -806,7 +807,7 @@ impl Vcpu {
                             }
                             #[cfg(target_arch = "aarch64")]
                             {
-                                pc = pc + 1;
+                                pc = pc + BP_LEN as u64;
                                 self.kvm_vcpu.set_pc(pc);
                                 Ok(VcpuEmulation::Handled)
                             }
@@ -888,7 +889,7 @@ impl Vcpu {
                             }
                             #[cfg(target_arch = "aarch64")]
                             {
-                                pc = pc + 1;
+                                pc = pc + BP_LEN as u64;
                                 self.kvm_vcpu.set_pc(pc);
                             }
                             match ret {
@@ -972,7 +973,7 @@ impl Vcpu {
                             }
                             #[cfg(target_arch = "aarch64")]
                             {
-                                pc = pc + 1;
+                                // pc = pc + 1;
                                 self.kvm_vcpu.set_pc(pc);
                                 Ok(VcpuEmulation::Handled)
                             }
