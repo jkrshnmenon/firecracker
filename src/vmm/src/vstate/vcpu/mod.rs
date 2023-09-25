@@ -593,10 +593,10 @@ impl Vcpu {
                     #[cfg(target_arch = "aarch64")]
                     {
                         pc = self.kvm_vcpu.get_pc();
-                        page_table = self.kvm_vcpu.get_contextidr();
                         let tcr = self.kvm_vcpu.get_tcr();
                         let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
                         let ttbr1 = self.kvm_vcpu.get_ttbr1();
+                        page_table = ttbr0;
                         match &self.kvm_vcpu.guest_memory_map {
                             Some(gm) => {
                                 phys_addr = pagewalk_aarch64(gm.clone(), pc, tcr, ttbr0, ttbr1);
@@ -662,7 +662,7 @@ impl Vcpu {
                             {
                                 dest = self.kvm_vcpu.get_x0();
                                 let tcr = self.kvm_vcpu.get_tcr();
-                                let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                                let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
                                 let ttbr1 = self.kvm_vcpu.get_ttbr1();
                                 log_jaeger_warning("run_emulation", format!("Translating {:#016x}", dest).as_str());
                                 match &self.kvm_vcpu.guest_memory_map {
@@ -766,7 +766,7 @@ impl Vcpu {
                             {
                                 dest = self.kvm_vcpu.get_x0();
                                 let tcr = self.kvm_vcpu.get_tcr();
-                                let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                                let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
                                 let ttbr1 = self.kvm_vcpu.get_ttbr1();
                                 match &self.kvm_vcpu.guest_memory_map {
                                     Some(gm) => {
@@ -859,7 +859,7 @@ impl Vcpu {
                                 dest = self.kvm_vcpu.get_x0() as u64;
                                 exit_code = self.kvm_vcpu.get_x1() as u64;
                                 let tcr = self.kvm_vcpu.get_tcr();
-                                let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                                let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
                                 let ttbr1 = self.kvm_vcpu.get_ttbr1();
                                 ret = match &self.kvm_vcpu.guest_memory_map {
                                     Some(gm) => {
@@ -1009,7 +1009,7 @@ impl Vcpu {
                                     {
                                         let dest = self.kvm_vcpu.get_x0();
                                         let tcr = self.kvm_vcpu.get_tcr();
-                                        let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                                        let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
                                         let ttbr1 = self.kvm_vcpu.get_ttbr1();
                                         match &self.kvm_vcpu.guest_memory_map {
                                             Some(gm) => {
