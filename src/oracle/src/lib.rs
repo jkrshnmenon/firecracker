@@ -144,6 +144,7 @@ pub fn pagewalk_aarch64(gm: GuestMemoryMmap, addr: u64, tcr: u64, ttbr0: u64, _t
     assert_eq!(t0sz, 25, "T0SZ is not 25");
     // Double checking to make sure we're not translating kernel addresses
     assert_eq!(epd0, 0, "EPD0 is not 0");
+    // log_jaeger_warning("pagewalk_aarch64", format!("Addr = {:#016x}, TTBR0 = {:#016x}, TCR = {:#016x}", addr, ttbr0, tcr).as_str());
     let page_offset = addr & 0xfff;
     let l3_index = addr >> 12 & 0x1ff;
     let l2_index = addr >> 21 & 0x1ff;
@@ -325,7 +326,8 @@ pub fn notify_exit(prog_path: &str, exit_code: u64) -> u64 {
     let mut ret:u64 = HANDLED;
     // log_jaeger_warning("notify_exit", "reading line");
     match recvline() {
-        Ok(data) => {ret = data.parse::<u64>().unwrap()},
+        Ok(data) => {
+            ret = data.parse::<u64>().unwrap()},
         Err(e) => {
             println!("Could not decode: {}", e);
         }
