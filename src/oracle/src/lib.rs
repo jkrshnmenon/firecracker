@@ -127,78 +127,40 @@ pub fn pagewalk(gm: GuestMemoryMmap, addr: u64, cr3: u64) -> u64 {
 
 
 /// A function for walking the page tables in aarch64
-pub fn pagewalk_aarch64(gm: GuestMemoryMmap, addr: u64, tcr: u64, ttbr0: u64, ttbr1: u64) -> u64 {
-    // print_table(TTBR0_EL1, TG0_BITS, T0SZ, pt_va_base=KERNEL_BASE)
-    // print_table(pt_pa, granule_bits, region_sz, pt_va_base=0, upper_region=False):
-    log_jaeger_warning("pagewalk_aarch64",
-        format!("Addr={:#016x} TCR={:#016x} TTBR0={:#016x} TTBR1={:#016x}", addr, tcr, ttbr0, ttbr1)
-        .as_str());
+pub fn pagewalk_aarch64(gm: GuestMemoryMmap, addr: u64, tcr: u64, ttbr0: u64, _ttbr1: u64) -> u64 {
     let t0sz = tcr & 0x3F;
     let tg0 = (tcr >> 14) & 0b11;
-    // let ips = (tcr >> 32) & 0b111;
-    let tg0_bits = match tg0 {
-        0 => 12,
-        1 => 16,
-        2 => 14,
-        _ => panic!("Unmatched tg0"),
-    };
-    let stride = tg0_bits - 3;
-    let entries_per_table = 1u64 << stride;
-    let mut levels = (64 - t0sz - tg0_bits) / stride;
-    if (64 - t0sz - tg0_bits) % stride > 0 {
-        levels += 1;
-    }
+    let epd0 = (tcr >> 6) & 1;
+    // I assume that all pages are 4kb
+    assert_eq!(tg0, 0, "TG0 is not 0");
+    // I assume only 3 levels of paging
+    // 64 - 25 == 39 == (12 + 9 * 3)
+    assert_eq!(t0sz, 25, "T0SZ is not 25");
+    // Double checking to make sure we're not translating kernel addresses
+    assert_eq!(epd0, 0, "EPD0 is not 0");
+    let page_offset = addr & 0xfff;
+    let l3_index = addr >> 12 & 0x1ff;
+    let l2_index = addr >> 21 & 0x1ff;
+    let l1_index = addr >> 30 & 0x1ff;
+    let l1_value = &mut [0u8; 8];
+    gm.read_slice(l1_value , GuestAddress(ttbr0 + l1_index * 8))
+    .expect("Failed to read phys_pt_address");
+    let l1_entry = u64::from_le_bytes(*l1_value) & !(0xfff) & ((1 << 32)-1);
+    log_jaeger_warning("pagewalk_aarch64", format!("L1 index: {:016x}, entry : {:016x}", l1_index, l1_entry).as_str());
 
-    let mut tables = vec![(0, ttbr0)];
-    let mut next_tables = vec![];
+    let l2_value = &mut [0u8; 8];
+    gm.read_slice(l2_value , GuestAddress(l1_entry + l2_index * 8))
+    .expect("Failed to read phys_pt_address");
+    let l2_entry = u64::from_le_bytes(*l2_value) & !(0xfff) & ((1 << 32)-1);
+    log_jaeger_warning("pagewalk_aarch64", format!("l2 index: {:016x}, entry : {:016x}", l2_index, l2_entry).as_str());
 
-    let mut mappings = vec![];
-    let pt_va_base = 0;
+    let l3_value = &mut [0u8; 8];
+    gm.read_slice(l3_value , GuestAddress(l2_entry + l3_index * 8))
+    .expect("Failed to read phys_pt_address");
+    let l3_entry = u64::from_le_bytes(*l3_value) & !(0xfff) & ((1 << 32)-1);
+    log_jaeger_warning("pagewalk_aarch64", format!("l3 index: {:016x}, entry : {:016x}", l3_index, l3_entry).as_str());
 
-    let phys_pt_data = &mut [0u8; 8];
-    for level in 0..levels {
-        if tables.is_empty() {
-            break;
-        }
-
-        let last_level = level + 1 == levels;
-        let x = levels - (level + 1) + 3;
-        // let lbit = std::cmp::min(47, (x - 3) * stride + 2 * tg0_bits - 4);
-        let rbit = tg0_bits + (x - 3) * stride;
-        // let bitwidth = lbit - rbit + 1;
-
-        for (va, table_addr) in &tables {
-            for entry_no in 0..entries_per_table {
-                gm.read_slice(phys_pt_data, GuestAddress(pt_va_base + table_addr + entry_no * 8))
-                .expect("Failed to read table entry");
-                let entry = u64::from_le_bytes(*phys_pt_data);
-                let new_va = va | (entry_no << rbit);
-
-                if entry & 0b11 == 3 {
-                    if last_level {
-                        mappings.push((new_va, entry));
-                    } else {
-                        next_tables.push((new_va, entry & 0xffff_fff0_0000));
-                    }
-                } else if entry & 0b11 == 1 {
-                    mappings.push((new_va, entry));
-                }
-            }
-        }
-
-        tables = next_tables;
-        next_tables = vec![];
-    }
-
-    if !mappings.is_empty() {
-        for (va, entry) in &mappings {
-            println!("{:016x}: {:016x}", va, entry);
-        }
-    } else {
-        println!("No virtual mappings found");
-    }
-
-    0 as u64
+    l3_entry + page_offset as u64
 }
 
 
