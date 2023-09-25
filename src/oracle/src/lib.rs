@@ -36,12 +36,18 @@ static mut DOJOSNOOP_BUFFER: Option<u64> = None;
 
 /// We use this variable to identify the length of the breakpoint instruction
 /// In the current situation, it is only one byte "\xcc"
-pub const BP_LEN: usize = 1;
+// pub const BP_LEN: usize = 1;
+
+/// In aarch64, the breakpoint is an instruction 0xd4200000
+pub const BP_LEN: usize = 4;
 
 /// According to my knowledge of AFL++, this is the default size of input
 pub const FUZZ_LEN: usize = 1024;
 
-pub const BP_BYTES: [u8; BP_LEN] = [0xcc];
+/// x86-64
+// pub const BP_BYTES: [u8; BP_LEN] = [0xcc];
+/// aarch64
+pub const BP_BYTES: [u8; BP_LEN] = [0xd4, 0x20, 0x00, 0x00];
 
 // const ORACLE_IP: &str = "localhost";
 // const ORACLE_PORT: i32 = 31337;
