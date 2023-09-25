@@ -144,21 +144,21 @@ pub fn pagewalk_aarch64(gm: GuestMemoryMmap, addr: u64, tcr: u64, ttbr0: u64, _t
     let l1_index = addr >> 30 & 0x1ff;
     let l1_value = &mut [0u8; 8];
     gm.read_slice(l1_value , GuestAddress(ttbr0 + l1_index * 8))
-    .expect("Failed to read phys_pt_address");
+    .expect("Failed to read l1 value");
     let l1_entry = u64::from_le_bytes(*l1_value) & !(0xfff) & ((1 << 32)-1);
-    log_jaeger_warning("pagewalk_aarch64", format!("L1 index: {:016x}, entry : {:016x}", l1_index, l1_entry).as_str());
+    // log_jaeger_warning("pagewalk_aarch64", format!("L1 index: {:016x}, entry : {:016x}", l1_index, l1_entry).as_str());
 
     let l2_value = &mut [0u8; 8];
     gm.read_slice(l2_value , GuestAddress(l1_entry + l2_index * 8))
-    .expect("Failed to read phys_pt_address");
+    .expect("Failed to read l2 value");
     let l2_entry = u64::from_le_bytes(*l2_value) & !(0xfff) & ((1 << 32)-1);
-    log_jaeger_warning("pagewalk_aarch64", format!("l2 index: {:016x}, entry : {:016x}", l2_index, l2_entry).as_str());
+    // log_jaeger_warning("pagewalk_aarch64", format!("l2 index: {:016x}, entry : {:016x}", l2_index, l2_entry).as_str());
 
     let l3_value = &mut [0u8; 8];
     gm.read_slice(l3_value , GuestAddress(l2_entry + l3_index * 8))
-    .expect("Failed to read phys_pt_address");
+    .expect("Failed to read l3 value");
     let l3_entry = u64::from_le_bytes(*l3_value) & !(0xfff) & ((1 << 32)-1);
-    log_jaeger_warning("pagewalk_aarch64", format!("l3 index: {:016x}, entry : {:016x}", l3_index, l3_entry).as_str());
+    // log_jaeger_warning("pagewalk_aarch64", format!("l3 index: {:016x}, entry : {:016x}", l3_index, l3_entry).as_str());
 
     l3_entry + page_offset as u64
 }
