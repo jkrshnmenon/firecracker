@@ -19,6 +19,7 @@ use libc::{c_int, c_void, siginfo_t};
 use logger::{error, info, IncMetric, METRICS, 
     log_jaeger_warning
 };
+#[allow(unused_imports)]
 use oracle:: {
 //     BP_LEN,
     BP_BYTES,
@@ -586,7 +587,7 @@ impl Vcpu {
                             }
                         };
                         pc = regs.rip;
-                        page_table = sregs.cr3;
+                        page_table = sregs.cr3 & !(0xfff);
                     }
 
                     #[cfg(target_arch = "aarch64")]
@@ -594,7 +595,7 @@ impl Vcpu {
                         pc = self.kvm_vcpu.get_pc();
                         page_table = self.kvm_vcpu.get_contextidr();
                         let tcr = self.kvm_vcpu.get_tcr();
-                        let ttbr0 = self.kvm_vcpu.get_ttbr0();
+                        let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
                         let ttbr1 = self.kvm_vcpu.get_ttbr1();
                         match &self.kvm_vcpu.guest_memory_map {
                             Some(gm) => {
@@ -613,7 +614,7 @@ impl Vcpu {
                            pc, phys_addr, page_table).as_str()
                     );
 
-                    match handle_kvm_exit_debug(pc, phys_addr, page_table & !(0xfff)) {
+                    match handle_kvm_exit_debug(pc, phys_addr, page_table) {
                         INIT => {
                             #[cfg(target_arch = "x86_64")]
                             {
