@@ -544,7 +544,7 @@ fn recvline(stream: &mut UnixStream) -> std::io::Result<String> {
 }
 
 /// Here, we request the fuzzing input from the Oracle
-pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 1024], usize) {
+pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 4096], usize) {
     // log_jaeger_warning("get_fuzz_bytes", "Getting fuzzing bytes");
     let msg = format!("FUZZ\n");
     match send_message(&msg, stream) {
@@ -559,14 +559,14 @@ pub fn get_fuzz_bytes(stream: &mut UnixStream) -> ([u8; 1024], usize) {
         }
     };
     log_jaeger_warning("get_fuzz_bytes", format!("Got size = {}", sz).as_str());
-    let mut values:[u8; 1024] = [0; 1024];
+    let mut values:[u8; 4096] = [0; 4096];
     if sz == 0 {
         return (values, sz);
     }
 
     let mut new_sz = sz;
-    if sz >= 1024 {
-        new_sz = 1023;
+    if sz >= 4096 {
+        new_sz = 4095;
     }
     for i in 0..new_sz {
         match recv_byte(stream) {
