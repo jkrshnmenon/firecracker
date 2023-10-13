@@ -676,7 +676,7 @@ pub fn get_bytes(stream: &mut UnixStream) -> [u8; BP_LEN] {
 #[allow(clippy::too_many_arguments)]
 pub fn build_microvm_from_snapshot2(
     instance_info: &InstanceInfo,
-    microvm_state: MicrovmState,
+    mut microvm_state: MicrovmState,
     guest_memory: GuestMemoryMmap,
     uffd: Option<Uffd>,
     track_dirty_pages: bool,
@@ -736,6 +736,10 @@ pub fn build_microvm_from_snapshot2(
                 log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
                 // log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
+                log_jaeger_warning("build_microvm_from_snapshot", "Changing disk path to /tmp/image.ext4");
+                let disk_device_path = "/tmp/image.ext4";
+                microvm_state.device_states.block_devices[0].device_state.disk_path = disk_device_path.to_string().clone();
+
             },
             Err(_) => {
                 panic!("Fork failed")
