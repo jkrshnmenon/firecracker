@@ -1096,6 +1096,7 @@ definitions:
     required:
       - mem_file_path
       - snapshot_path
+      - disk_device_path
     properties:
       mem_file_path:
         type: string
@@ -1148,6 +1149,9 @@ definitions:
         type: boolean
         description:
           When set to true, the vm is also resumed if the snapshot load is successful.
+      disk_device_path:
+        type: string
+        description: Path to the disk device backing the disk state at the time of the snapshot creation
 
   TokenBucket:
     type: object
