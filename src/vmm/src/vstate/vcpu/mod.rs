@@ -36,8 +36,8 @@ use oracle:: {
     get_bytes,
     get_fuzz_bytes,
     get_fuzz_addr,
-    // get_translation,
-    // send_translation,
+    get_translations,
+    send_translations,
 };
 use nix::unistd::{getpid};
 use vm_memory::{GuestAddress, Bytes};
@@ -920,6 +920,43 @@ impl Vcpu {
                              * Here we need to get the offsets to modify from Oracle
                              * We insert the BP_BYTES into the physical addresses
                              */
+                            // First we satisfy all the translation requests
+                            let requests = get_translations();
+                            let mut translations: Vec<(u64, u64)> = Vec::new();
+                            let mut phys_bbl;
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        for bbl_addr in requests {
+                                            phys_bbl = pagewalk(gm.clone(), bbl_addr, page_table);
+                                            translations.push((bbl_addr, phys_bbl));
+                                        }
+                                    },
+                                    None => {
+                                        log_jaeger_warning("run_emulation", "No memory map");
+                                    }
+                                };
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        let tcr = self.kvm_vcpu.get_tcr();
+                                        let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
+                                        let ttbr1 = self.kvm_vcpu.get_ttbr1();
+                                        for bbl_addr in requests {
+                                            phys_bbl = pagewalk_aarch64(gm.clone(), bbl_addr, tcr, ttbr0, ttbr1);
+                                            translations.push((bbl_addr, phys_bbl));
+                                        }
+                                    },
+                                    None => {
+                                        log_jaeger_warning("run_emulation", "No memory map");
+                                    }
+                                };
+                            }
+                            send_translations(translations);
+
                             let offsets = get_offsets();
                             match &self.kvm_vcpu.guest_memory_map {
                                 Some(gm) => {
