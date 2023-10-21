@@ -39,6 +39,7 @@ static mut DOJOSNOOP_BUFFER: Option<u64> = None;
 // pub const BP_LEN: usize = 1;
 
 /// In aarch64, the breakpoint is an instruction 0xd4200000
+/// In arm, the bytes are 0x700020e1
 pub const BP_LEN: usize = 4;
 
 /// According to my knowledge of AFL++, this is the default size of input
@@ -47,7 +48,9 @@ pub const FUZZ_LEN: usize = 1024;
 /// x86-64
 // pub const BP_BYTES: [u8; BP_LEN] = [0xcc];
 /// aarch64
-pub const BP_BYTES: [u8; BP_LEN] = [0xd4, 0x20, 0x00, 0x00];
+pub const BP_BYTES: [u8; BP_LEN] = [0x00, 0x00, 0x20, 0xd4];
+/// arm
+// pub const BP_BYTES: [u8; BP_LEN] = [0x70, 0x00, 0x20, 0xe1];
 
 // const ORACLE_IP: &str = "localhost";
 // const ORACLE_PORT: i32 = 31337;
@@ -336,6 +339,48 @@ pub fn notify_exit(prog_path: &str, exit_code: u64) -> u64 {
     ret
 }
 
+/// The Oracle will send us the physical addresses for the program
+pub fn send_translations(pages: Vec<(u64, u64)>) {
+    log_jaeger_warning("send_translations", "Sending translations");
+    for (virt, phys) in pages {
+        let msg = format!("{:#016x}={:#016x}\n", virt, phys);
+        // log_jaeger_warning("send_translations", msg.as_str());
+        match send_message(&msg) {
+            Ok(()) => (),
+            Err(e) => panic!("{}", e)
+        };
+    }
+}
+
+/// The Oracle will send us the physical addresses for the program
+pub fn get_translations() -> Vec<u64> {
+    log_jaeger_warning("get_translations", "Sending TRANSLATE");
+    let msg = format!("TRANSLATE\n");
+    match send_message(&msg) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+    // log_jaeger_warning("get_offsets", "Getting values");
+    let mut values: Vec<u64> = Vec::new();
+    loop {
+        // log_jaeger_warning("get_offsets", "loop getting values");
+        match recvline() {
+            Ok(data) => {
+                match data.parse::<u64>() {
+                    Ok(x) => values.push(x),
+                    Err(_e) => break,
+                }
+            },
+            Err(e) => {
+                println!("Could not decode: {}", e);
+                break;
+            }
+        };
+    }
+    // println!("Received values: {:?}", values);
+    // log_jaeger_warning("get_offsets", "Finished");
+    values
+}
 
 /// The Oracle will send us the physical addresses for the program
 pub fn get_offsets() -> Vec<u64> {
@@ -549,7 +594,7 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
 
     // We've already initialized all the required variables.
     // Handle this situation properly now
-    let (_is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3);
+    let (is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3);
     if take_snapshot == true {
         log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
         return SNAPSHOT;
@@ -559,16 +604,16 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
         return FUZZ;
     }
 
-    // if is_first == true {
-    //     // If we get here, it means that we've hit the breakpoint injected into
-    //     // the entry point of the current program.
-    //     // Tell FC that we need to modify the program
-    //     log_jaeger_warning("handle_kvm_exit_debug", format!("MODIFY = {:#016x}", rip).as_str());
-    //     return MODIFY;
-    // } else {
-    //     // If we get here, it means that we've hit an injected breakpoint
-    //     // Tell FC that we need to unmodify
-    log_jaeger_warning("handle_kvm_exit_debug", format!("UNMODIFY = {:#016x}", rip).as_str());
-    return UNMODIFY;
-    // }
+    if is_first == true {
+        // If we get here, it means that we've hit the breakpoint injected into
+        // the entry point of the current program.
+        // Tell FC that we need to modify the program
+        log_jaeger_warning("handle_kvm_exit_debug", format!("MODIFY = {:#016x}", rip).as_str());
+        return MODIFY;
+    } else {
+        // If we get here, it means that we've hit an injected breakpoint
+        // Tell FC that we need to unmodify
+        log_jaeger_warning("handle_kvm_exit_debug", format!("UNMODIFY = {:#016x}", rip).as_str());
+        return UNMODIFY;
+    }
 }
