@@ -736,10 +736,6 @@ pub fn build_microvm_from_snapshot2(
                 log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
                 // log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
                 // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
-                log_jaeger_warning("build_microvm_from_snapshot", "Changing disk path to /tmp/image.ext4");
-                let disk_device_path = "/tmp/image.ext4";
-                microvm_state.device_states.block_devices[0].device_state.disk_path = disk_device_path.to_string().clone();
-
             },
             Err(_) => {
                 panic!("Fork failed")
@@ -759,7 +755,6 @@ pub fn build_microvm_from_snapshot2(
             .expect("Failed to write slice");
         log_jaeger_warning("build_microvm_from_snapshot", "Child modified memory");
     }
-
 
     let mut event_manager = EventManager::new().unwrap();
 
