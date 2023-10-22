@@ -48,9 +48,9 @@ pub const FUZZ_LEN: usize = 1024;
 /// x86-64
 // pub const BP_BYTES: [u8; BP_LEN] = [0xcc];
 /// aarch64
-pub const BP_BYTES: [u8; BP_LEN] = [0x00, 0x00, 0x20, 0xd4];
+// pub const BP_BYTES: [u8; BP_LEN] = [0x00, 0x00, 0x20, 0xd4];
 /// arm
-// pub const BP_BYTES: [u8; BP_LEN] = [0x70, 0x00, 0x20, 0xe1];
+pub const BP_BYTES: [u8; BP_LEN] = [0x70, 0x00, 0x20, 0xe1];
 
 // const ORACLE_IP: &str = "localhost";
 // const ORACLE_PORT: i32 = 31337;
