@@ -676,7 +676,7 @@ pub fn get_bytes(stream: &mut UnixStream) -> [u8; BP_LEN] {
 #[allow(clippy::too_many_arguments)]
 pub fn build_microvm_from_snapshot2(
     instance_info: &InstanceInfo,
-    mut microvm_state: MicrovmState,
+    microvm_state: MicrovmState,
     guest_memory: GuestMemoryMmap,
     uffd: Option<Uffd>,
     track_dirty_pages: bool,
