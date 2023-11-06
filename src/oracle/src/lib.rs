@@ -604,16 +604,16 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
         return FUZZ;
     }
 
-    if is_first == true {
-        // If we get here, it means that we've hit the breakpoint injected into
-        // the entry point of the current program.
-        // Tell FC that we need to modify the program
-        log_jaeger_warning("handle_kvm_exit_debug", format!("MODIFY = {:#016x}", rip).as_str());
-        return MODIFY;
-    } else {
+    // if is_first == true {
+    //     // If we get here, it means that we've hit the breakpoint injected into
+    //     // the entry point of the current program.
+    //     // Tell FC that we need to modify the program
+    //     log_jaeger_warning("handle_kvm_exit_debug", format!("MODIFY = {:#016x}", rip).as_str());
+    //     return MODIFY;
+    // } else {
         // If we get here, it means that we've hit an injected breakpoint
         // Tell FC that we need to unmodify
-        log_jaeger_warning("handle_kvm_exit_debug", format!("UNMODIFY = {:#016x}", rip).as_str());
-        return UNMODIFY;
-    }
+    log_jaeger_warning("handle_kvm_exit_debug", format!("UNMODIFY = {:#016x}", rip).as_str());
+    return UNMODIFY;
+    // }
 }
