@@ -683,65 +683,65 @@ pub fn build_microvm_from_snapshot2(
     seccomp_filters: &BpfThreadMap,
     vm_resources: &mut VmResources,
 ) -> std::result::Result<FcExitCode, BuildMicrovmFromSnapshotError> {
-    let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
-        .expect("Could not connect to parent socket");
-    log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
-    let mut ctr = 0;
-    let mut pids = Vec::new();
-    loop {
-        // log_jaeger_warning("build_microvm_from_snapshot2", "forking");
-        match fork(){
-            Ok(ForkResult::Child) => {
-                // log_jaeger_warning("build_microvm_from_snapshot", "Created child");
-                break;
-            },
-            Ok(ForkResult::Parent {child, .. }) => {
-                ctr += 1;
-                pids.push(child);
-                log_jaeger_warning("build_microvm_from_snapshot", format!("Parent sending child PID:{}", child).as_str());
-                send_message(format!("PID={}", child).as_str(), &mut stream)
-                .expect("Failed to send child PID");
+    // let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
+    //     .expect("Could not connect to parent socket");
+    // log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
+    // let mut ctr = 0;
+    // let mut pids = Vec::new();
+    // loop {
+    //     // log_jaeger_warning("build_microvm_from_snapshot2", "forking");
+    //     match fork(){
+    //         Ok(ForkResult::Child) => {
+    //             // log_jaeger_warning("build_microvm_from_snapshot", "Created child");
+    //             break;
+    //         },
+    //         Ok(ForkResult::Parent {child, .. }) => {
+    //             ctr += 1;
+    //             pids.push(child);
+    //             log_jaeger_warning("build_microvm_from_snapshot", format!("Parent sending child PID:{}", child).as_str());
+    //             send_message(format!("PID={}", child).as_str(), &mut stream)
+    //             .expect("Failed to send child PID");
 
-                log_jaeger_warning("build_microvm_from_snapshot", "Parent waiting for child to exit");
-                match recv_byte(&mut stream) {
-                    Ok(_) => log_jaeger_warning("build_microvm_from_snapshot2", "got a message on socket"),
-                    Err(_e) => {
-                        log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket");
-                        // signal::kill(child, Signal::SIGTERM).unwrap();
-                        let last_pid = pids.pop().unwrap();
-                        // log_jaeger_warning("build_microvm_from_snapshot2", format!("Waiting for child to exit: {}", last_pid).as_str());
-                        waitpid(last_pid, None);
-                        // log_jaeger_warning("build_microvm_from_snapshot2", "Continuing");
-                        // continue;
-                    }
-                };
-                signal::kill(child, Signal::SIGTERM).unwrap();
-                if ctr % 10000 == 0 {
-                    // log_jaeger_warning("build_microvm_from_snapshot", "Reap all children");
-                    for x in &pids {
-                        // log_jaeger_warning("build_microvm_from_snapshot", format!("Reap pid={}", x).as_str());
-                        waitpid(*x, None);
-                    }
-                    pids.clear();
-                    // log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
-                } 
-                // log_jaeger_warning("build_microvm_from_snapshot", "Getting offsets");
-                // let offsets = get_offsets(&mut stream);
-                // for off in offsets.iter() {
-                //     // log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
-                //     let fix_bytes = get_bytes(&mut stream);
-                //     guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
-                //         .expect("Failed to write slice");
-                // }
-                // log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
-                // log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
-                // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
-            },
-            Err(_) => {
-                panic!("Fork failed")
-            }
-        };
-    };
+    //             log_jaeger_warning("build_microvm_from_snapshot", "Parent waiting for child to exit");
+    //             match recv_byte(&mut stream) {
+    //                 Ok(_) => log_jaeger_warning("build_microvm_from_snapshot2", "got a message on socket"),
+    //                 Err(_e) => {
+    //                     log_jaeger_warning("build_microvm_from_snapshot2", "Error reading from socket");
+    //                     // signal::kill(child, Signal::SIGTERM).unwrap();
+    //                     let last_pid = pids.pop().unwrap();
+    //                     // log_jaeger_warning("build_microvm_from_snapshot2", format!("Waiting for child to exit: {}", last_pid).as_str());
+    //                     waitpid(last_pid, None);
+    //                     // log_jaeger_warning("build_microvm_from_snapshot2", "Continuing");
+    //                     // continue;
+    //                 }
+    //             };
+    //             signal::kill(child, Signal::SIGTERM).unwrap();
+    //             if ctr % 10000 == 0 {
+    //                 // log_jaeger_warning("build_microvm_from_snapshot", "Reap all children");
+    //                 for x in &pids {
+    //                     // log_jaeger_warning("build_microvm_from_snapshot", format!("Reap pid={}", x).as_str());
+    //                     waitpid(*x, None);
+    //                 }
+    //                 pids.clear();
+    //                 // log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
+    //             } 
+    //             // log_jaeger_warning("build_microvm_from_snapshot", "Getting offsets");
+    //             // let offsets = get_offsets(&mut stream);
+    //             // for off in offsets.iter() {
+    //             //     // log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
+    //             //     let fix_bytes = get_bytes(&mut stream);
+    //             //     guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
+    //             //         .expect("Failed to write slice");
+    //             // }
+    //             // log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
+    //             // log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
+    //             // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
+    //         },
+    //         Err(_) => {
+    //             panic!("Fork failed")
+    //         }
+    //     };
+    // };
 
     log_jaeger_warning("build_microvm_from_snapshot", "Child modifying memory");
     let mut child_stream = UnixStream::connect("/tmp/CHILD_SOCK")
