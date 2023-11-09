@@ -23,7 +23,7 @@ use logger::{error, info, IncMetric, METRICS,
 use oracle:: {
     BP_LEN,
     BP_BYTES,
-    INIT, INIT_COMPLETE, EXEC, EXIT, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER,
+    INIT, INIT_COMPLETE, EXEC, EXIT, FORK, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
     pagewalk_aarch64,
@@ -32,6 +32,7 @@ use oracle:: {
     set_buffer,
     notify_exec,
     notify_exit,
+    notify_fork,
     get_offsets,
     get_bytes,
     get_fuzz_bytes,
@@ -738,9 +739,11 @@ impl Vcpu {
                             // This should be invoked by the dojosnoop_exec handler.
                             // The string containing the program path should be in RDI.
                             let str_addr;
+                            let pid;
                             let dest;
                             #[cfg(target_arch = "x86_64")]
                             {
+                                pid = regs.rsi as u64;
                                 dest = regs.rdi;
                                 str_addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
                                 match &self.kvm_vcpu.guest_memory_map {
@@ -754,7 +757,7 @@ impl Vcpu {
                                                 .position(|&c| c == b'\0')
                                                 .unwrap_or(buf.len());
                                             let prog_path = from_utf8(&buf[0..end]).unwrap();
-                                            notify_exec(prog_path);
+                                            notify_exec(pid, prog_path);
                                         }
                                     },
                                     None => {
@@ -764,6 +767,7 @@ impl Vcpu {
                             }
                             #[cfg(target_arch = "aarch64")]
                             {
+                                pid = self.kvm_vcpu.get_x1() as u64;
                                 dest = self.kvm_vcpu.get_x0();
                                 let tcr = self.kvm_vcpu.get_tcr();
                                 let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
@@ -778,16 +782,13 @@ impl Vcpu {
                                             .position(|&c| c == b'\0')
                                             .unwrap_or(buf.len());
                                         let prog_path = from_utf8(&buf[0..end]).unwrap();
-                                        notify_exec(prog_path);
+                                        notify_exec(pid, prog_path);
                                     },
                                     None => {
-                                        str_addr = 0;
                                         log_jaeger_warning("run_emulation", "No memory map");
                                     }
                                 };
                             }
-
-                            log_jaeger_warning("run_emulation", format!("DEST = {:#016x}, STR_ADDR = {:#016x}", dest, str_addr).as_str());
 
                             #[cfg(target_arch = "x86_64")]
                             {
@@ -818,68 +819,24 @@ impl Vcpu {
                              * And send it to the oracle.
                              */
                             // This should be invoked by the dojosnoop_exec handler.
-                            let dest;
+                            let pid;
                             let exit_code;
-                            let str_addr;
                             let ret;
                             #[cfg(target_arch = "x86_64")]
                             {
                                 // The string containing the program path should be in RDI.
-                                dest = regs.rdi;
+                                pid = regs.rdi as u64;
                                 // The exit code should be in rsi
                                 exit_code = regs.rsi as u64;
 
-                                str_addr = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
-
-                                ret = match &self.kvm_vcpu.guest_memory_map {
-                                    Some(gm) => {
-                                        if str_addr == 0 {
-                                            str_addr = pagewalk(gm.clone(), dest, page_table);
-                                        }
-                                        let buf = &mut [0u8; 100];
-                                        gm.read_slice(buf, GuestAddress(str_addr))
-                                            .expect("Failed to read string");
-                                        let end = buf.iter()
-                                            .position(|&c| c == b'\0')
-                                            .unwrap_or(buf.len());
-                                        let prog_path = from_utf8(&buf[0..end]).unwrap();
-                                        // Oracle will let us know if we need to return
-                                        // Handled, Stopped or Crashed
-                                        notify_exit(prog_path, exit_code)
-                                    },
-                                    None => {
-                                        log_jaeger_warning("run_emulation", "No memory map");
-                                        0x1337
-                                    }
-                                };
+                                ret = notify_exit(pid, exit_code);
                             }
 
                             #[cfg(target_arch = "aarch64")]
                             {
-                                dest = self.kvm_vcpu.get_x0() as u64;
+                                pid = self.kvm_vcpu.get_x0() as u64;
                                 exit_code = self.kvm_vcpu.get_x1() as u64;
-                                let tcr = self.kvm_vcpu.get_tcr();
-                                let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
-                                let ttbr1 = self.kvm_vcpu.get_ttbr1();
-                                ret = match &self.kvm_vcpu.guest_memory_map {
-                                    Some(gm) => {
-                                        str_addr = pagewalk_aarch64(gm.clone(), dest, tcr, ttbr0, ttbr1);
-                                        let buf = &mut [0u8; 100];
-                                        gm.read_slice(buf, GuestAddress(str_addr))
-                                            .expect("Failed to read string");
-                                        let end = buf.iter()
-                                            .position(|&c| c == b'\0')
-                                            .unwrap_or(buf.len());
-                                        let prog_path = from_utf8(&buf[0..end]).unwrap();
-                                        // Oracle will let us know if we need to return
-                                        // Handled, Stopped or Crashed
-                                        notify_exit(prog_path, exit_code)
-                                    },
-                                    None => {
-                                        log_jaeger_warning("run_emulation", "No memory map");
-                                        0x1337
-                                    }
-                                }
+                                ret = notify_exit(pid, exit_code);
                             }
                             #[cfg(target_arch = "x86_64")]
                             {
@@ -913,6 +870,50 @@ impl Vcpu {
                                     Ok(VcpuEmulation::Crashed)
                                 },
                                 _ => Ok(VcpuEmulation::Handled)
+                            }
+                        },
+                        FORK => {
+                            /*
+                             * Need to get the path to the program here.
+                             * And send it to the oracle.
+                             */
+                            // This should be invoked by the dojosnoop_exec handler.
+                            // The string containing the program path should be in RDI.
+                            let (oldpid, newpid);
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                oldpid = regs.rdi as u64;
+                                newpid = regs.rsi as u64;
+                                notify_fork(oldpid, newpid);
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                oldpid = self.kvm_vcpu.get_x0() as u64;
+                                newpid = self.kvm_vcpu.get_x1() as u64;
+                                notify_fork(oldpid, newpid);
+                            }
+
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        Ok(VcpuEmulation::Handled)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
+                                }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + BP_LEN as u64;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Handled)
                             }
                         },
                         MODIFY => {
