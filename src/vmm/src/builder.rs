@@ -683,9 +683,11 @@ pub fn build_microvm_from_snapshot2(
     seccomp_filters: &BpfThreadMap,
     vm_resources: &mut VmResources,
 ) -> std::result::Result<FcExitCode, BuildMicrovmFromSnapshotError> {
-    let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
-        .expect("Could not connect to parent socket");
-    log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
+    // let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
+    //     .expect("Could not connect to parent socket");
+    let mut child_stream = UnixStream::connect("/tmp/CHILD_SOCK")
+        .expect("Could not connect to child socket");
+    log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/CHILD_SOCK");
     // let mut ctr = 0;
     // let mut pids = Vec::new();
     // loop {
@@ -726,10 +728,11 @@ pub fn build_microvm_from_snapshot2(
     //                 // log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
     //             } 
     log_jaeger_warning("build_microvm_from_snapshot", "Getting offsets");
-    let offsets = get_offsets(&mut stream);
+    let offsets = get_offsets(&mut child_stream);
+    log_jaeger_warning("build_microvm_from_snapshot", "Got offsets");
     for off in offsets.iter() {
-        // log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
-        let fix_bytes = get_bytes(&mut stream);
+        log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
+        let fix_bytes = get_bytes(&mut child_stream);
         guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
             .expect("Failed to write slice");
     }
@@ -744,8 +747,6 @@ pub fn build_microvm_from_snapshot2(
     // };
 
     log_jaeger_warning("build_microvm_from_snapshot", "Child modifying memory");
-    let mut child_stream = UnixStream::connect("/tmp/CHILD_SOCK")
-        .expect("Could not connect to child socket");
 
     let (fuzz_bytes, sz) = get_fuzz_bytes(&mut child_stream);
     let fuzz_addr = get_fuzz_addr(&mut child_stream);
