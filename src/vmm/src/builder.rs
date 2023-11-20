@@ -683,9 +683,9 @@ pub fn build_microvm_from_snapshot2(
     seccomp_filters: &BpfThreadMap,
     vm_resources: &mut VmResources,
 ) -> std::result::Result<FcExitCode, BuildMicrovmFromSnapshotError> {
-    // let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
-    //     .expect("Could not connect to parent socket");
-    // log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
+    let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
+        .expect("Could not connect to parent socket");
+    log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/PARENT_SOCK");
     // let mut ctr = 0;
     // let mut pids = Vec::new();
     // loop {
@@ -725,15 +725,15 @@ pub fn build_microvm_from_snapshot2(
     //                 pids.clear();
     //                 // log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
     //             } 
-    //             // log_jaeger_warning("build_microvm_from_snapshot", "Getting offsets");
-    //             // let offsets = get_offsets(&mut stream);
-    //             // for off in offsets.iter() {
-    //             //     // log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
-    //             //     let fix_bytes = get_bytes(&mut stream);
-    //             //     guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
-    //             //         .expect("Failed to write slice");
-    //             // }
-    //             // log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
+    log_jaeger_warning("build_microvm_from_snapshot", "Getting offsets");
+    let offsets = get_offsets(&mut stream);
+    for off in offsets.iter() {
+        // log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
+        let fix_bytes = get_bytes(&mut stream);
+        guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
+            .expect("Failed to write slice");
+    }
+    log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
     //             // log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
     //             // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
     //         },
