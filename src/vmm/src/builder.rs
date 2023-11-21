@@ -727,16 +727,16 @@ pub fn build_microvm_from_snapshot2(
     //                 pids.clear();
     //                 // log_jaeger_warning("build_microvm_from_snapshot", "Reaped all children");
     //             } 
-    log_jaeger_warning("build_microvm_from_snapshot", "Getting offsets");
-    let offsets = get_offsets(&mut child_stream);
-    log_jaeger_warning("build_microvm_from_snapshot", "Got offsets");
-    for off in offsets.iter() {
-        log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
-        let fix_bytes = get_bytes(&mut child_stream);
-        guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
-            .expect("Failed to write slice");
-    }
-    log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
+    // log_jaeger_warning("build_microvm_from_snapshot", "Getting offsets");
+    // let offsets = get_offsets(&mut child_stream);
+    // log_jaeger_warning("build_microvm_from_snapshot", "Got offsets");
+    // for off in offsets.iter() {
+    //     log_jaeger_warning("build_microvm_from_snapshot", "Getting bytes");
+    //     let fix_bytes = get_bytes(&mut child_stream);
+    //     guest_memory.write_slice(&fix_bytes, GuestAddress(*off))
+    //         .expect("Failed to write slice");
+    // }
+    // log_jaeger_warning("build_microvm_from_snapshot", "Fixed breakpoints");
     //             // log_jaeger_warning("build_microvm_from_snapshot", "Child exited");
     //             // return Err(BuildMicrovmFromSnapshotError::MissingVmmSeccompFilters);
     //         },
