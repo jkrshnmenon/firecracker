@@ -8,6 +8,7 @@ use std::fmt::{Display, Formatter};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::{Arc, Mutex};
+use std::env;
 
 use arch::InitrdConfig;
 #[cfg(target_arch = "aarch64")]
@@ -685,9 +686,15 @@ pub fn build_microvm_from_snapshot2(
 ) -> std::result::Result<FcExitCode, BuildMicrovmFromSnapshotError> {
     // let mut stream = UnixStream::connect("/tmp/PARENT_SOCK")
     //     .expect("Could not connect to parent socket");
-    let mut child_stream = UnixStream::connect("/tmp/CHILD_SOCK")
+
+    let mut value = env::var("WORKDIR").unwrap_or_else(|_| {
+        eprintln!("{} is not set", "WORKDIR");
+        std::process::exit(1);
+        });
+    value.push_str("/CHILD_SOCK");
+    let mut child_stream = UnixStream::connect(value)
         .expect("Could not connect to child socket");
-    log_jaeger_warning("build_microvm_from_snapshot2", "connected to /tmp/CHILD_SOCK");
+    log_jaeger_warning("build_microvm_from_snapshot2", "connected to CHILD_SOCK");
     // let mut ctr = 0;
     // let mut pids = Vec::new();
     // loop {

@@ -5,6 +5,7 @@ use std::io::{
     Write
 };
 use std::process;
+use std::env;
 use vm_memory::{GuestMemoryMmap, GuestAddress, Bytes};
 use logger::log_jaeger_warning;
 
@@ -56,7 +57,7 @@ pub const BP_BYTES: [u8; BP_LEN] = [0x70, 0x00, 0x20, 0xe1];
 
 // const ORACLE_IP: &str = "localhost";
 // const ORACLE_PORT: i32 = 31337;
-const ORACLE_SOCKET: &str = "/tmp/FC_SOCK";
+// const ORACLE_SOCKET: &str = "/tmp/FC_SOCK";
 
 // static mut STREAM: Option<TcpStream> = None;
 static mut STREAM: Option<UnixStream> = None;
@@ -251,7 +252,12 @@ fn recvline() -> std::io::Result<String> {
 /// This function is supposed to set up the connection with Oracle
 pub fn init_handshake() -> std::io::Result<()> {
     unsafe { 
-        match UnixStream::connect(ORACLE_SOCKET) {
+        let mut value = env::var("WORKDIR").unwrap_or_else(|_| {
+            eprintln!("{} is not set", "WORKDIR");
+            std::process::exit(1);
+            });
+        value.push_str("/FC_SOCK");
+        match UnixStream::connect(value) {
             Ok(stream) => {
                 STREAM = Some(stream);
                 let _flag = get_init();
