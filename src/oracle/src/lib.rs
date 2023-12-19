@@ -287,8 +287,8 @@ pub fn init_handshake() -> std::io::Result<()> {
 
 /// This function is used to inform the Oracle of a breakpoint event
 /// Oracle will let us know if this is the entrypoint
-pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64) -> (bool, bool, bool) {
-    let msg = format!("{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3);
+pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64, arg: u64) -> (bool, bool, bool) {
+    let msg = format!("{:#016x}:{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3, arg);
     match send_message(&msg) {
         Ok(()) => (),
         Err(e) => panic!("{}", e)
@@ -583,7 +583,7 @@ pub fn set_buffer(rdi: u64) {
 }
 
 
-pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
+pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, arg: u64) -> u64 {
     unsafe {
         if DOJOSNOOP_CR3.is_none() {
             assert!(DOJOSNOOP_EXEC.is_none(), "dojosnoop_exec isn't None");
@@ -619,7 +619,7 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64) -> u64 {
 
     // We've already initialized all the required variables.
     // Handle this situation properly now
-    let (_is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3);
+    let (_is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3, arg);
     if take_snapshot == true {
         log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
         return SNAPSHOT;

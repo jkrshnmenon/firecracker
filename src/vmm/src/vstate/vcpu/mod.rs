@@ -570,6 +570,7 @@ impl Vcpu {
                     let mut pc;
                     let page_table;
                     let phys_addr;
+                    let (arg1, arg2);
                     #[cfg(target_arch = "x86_64")]
                     {
                         let mut regs = self.kvm_vcpu.get_regs().unwrap();
@@ -588,12 +589,16 @@ impl Vcpu {
                             }
                         };
                         pc = regs.rip;
+                        arg1 = regs.rdi;
+                        arg2 = regs.rsi;
                         page_table = sregs.cr3 & !(0xfff);
                     }
 
                     #[cfg(target_arch = "aarch64")]
                     {
                         pc = self.kvm_vcpu.get_pc();
+                        arg1 = self.kvm_vcpu.get_x0();
+                        arg2 = self.kvm_vcpu.get_x1();
                         let tcr = self.kvm_vcpu.get_tcr();
                         let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
                         let ttbr1 = self.kvm_vcpu.get_ttbr1();
@@ -614,8 +619,10 @@ impl Vcpu {
                         format!("KVM_EXIT_DEBUG: PC = {:#016x} | Physical RIP = {:#016x} | PAGETABLE = {:#016x}",
                            pc, phys_addr, page_table).as_str()
                     );
+                    
+                    let arg = arg1 << 32 | arg2;
 
-                    match handle_kvm_exit_debug(pc, phys_addr, page_table) {
+                    match handle_kvm_exit_debug(pc, phys_addr, page_table, arg) {
                         INIT => {
                             #[cfg(target_arch = "x86_64")]
                             {
