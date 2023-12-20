@@ -19,6 +19,7 @@ pub const SNAPSHOT: u64 = 6;
 pub const FUZZ:u64 = 7;
 pub const INIT_BUFFER:u64 = 8;
 pub const FORK:u64 = 9;
+pub const SKIP:u64 = 10;
 
 pub const HANDLED:u64 = 0;
 pub const STOPPED:u64 = 1;
@@ -287,7 +288,7 @@ pub fn init_handshake() -> std::io::Result<()> {
 
 /// This function is used to inform the Oracle of a breakpoint event
 /// Oracle will let us know if this is the entrypoint
-pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64, arg: u64) -> (bool, bool, bool) {
+pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64, arg: u64) -> (bool, bool, bool, bool) {
     let msg = format!("{:#016x}:{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3, arg);
     match send_message(&msg) {
         Ok(()) => (),
@@ -314,7 +315,14 @@ pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64, arg: u64) -> (bool, 
             false
         }
     };
-    (is_first, take_snapshot, fuzz)
+    let skip: bool =  match recvline() {
+        Ok(data) => data.trim().parse::<bool>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            false
+        }
+    };
+    (is_first, take_snapshot, fuzz, skip)
 }
 
 
@@ -619,7 +627,7 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, arg: u64) -> u6
 
     // We've already initialized all the required variables.
     // Handle this situation properly now
-    let (_is_first, take_snapshot, fuzz) = notify_oracle(rip, phys_addr, cr3, arg);
+    let (_is_first, take_snapshot, fuzz, skip) = notify_oracle(rip, phys_addr, cr3, arg);
     if take_snapshot == true {
         log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
         return SNAPSHOT;
@@ -627,6 +635,9 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, arg: u64) -> u6
     if fuzz == true {
         log_jaeger_warning("handle_kvm_exit_debug", format!("FUZZ = {:#016x}", rip).as_str());
         return FUZZ;
+    }
+    if skip == true {
+        return SKIP;
     }
 
     // if is_first == true {

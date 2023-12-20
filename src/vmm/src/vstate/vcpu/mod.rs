@@ -23,7 +23,7 @@ use logger::{error, info, IncMetric, METRICS,
 use oracle:: {
     BP_LEN,
     BP_BYTES,
-    INIT, INIT_COMPLETE, EXEC, EXIT, FORK, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER,
+    INIT, INIT_COMPLETE, EXEC, EXIT, FORK, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER, SKIP,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
     pagewalk_aarch64,
@@ -1019,6 +1019,31 @@ impl Vcpu {
                             #[cfg(target_arch = "aarch64")]
                             {
                                 // pc = pc + 1;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Handled)
+                            }
+                        },
+                        SKIP => {
+                            /* Skip this breakpoint and continue */
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        Ok(VcpuEmulation::Handled)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
+                                }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + BP_LEN as u64;
                                 self.kvm_vcpu.set_pc(pc);
                                 Ok(VcpuEmulation::Handled)
                             }
