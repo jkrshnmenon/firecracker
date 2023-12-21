@@ -637,6 +637,7 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, arg: u64) -> u6
         return FUZZ;
     }
     if skip == true {
+        log_jaeger_warning("handle_kvm_exit_debug", format!("SKIP = {:#016x}", rip).as_str());
         return SKIP;
     }
 
