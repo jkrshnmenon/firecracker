@@ -23,13 +23,14 @@ use logger::{error, info, IncMetric, METRICS,
 use oracle:: {
     BP_LEN,
     BP_BYTES,
-    INIT, INIT_COMPLETE, EXEC, EXIT, FORK, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER, SKIP,
+    INIT, INIT_COMPLETE, EXEC, EXIT, FORK, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER, SKIP, INIT_MAP,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
     pagewalk_aarch64,
     init_handshake,
     handle_kvm_exit_debug,
     set_buffer,
+    set_map,
     notify_exec,
     notify_exit,
     notify_fork,
@@ -620,7 +621,8 @@ impl Vcpu {
                            pc, phys_addr, page_table).as_str()
                     );
                     
-                    let arg = arg1 << 32 | arg2;
+                    // let arg = arg1 << 32 | arg2;
+                    let arg = arg1;
 
                     match handle_kvm_exit_debug(pc, phys_addr, page_table, arg) {
                         INIT => {
@@ -686,6 +688,69 @@ impl Vcpu {
 
                             log_jaeger_warning("run_emulation", format!("DEST = {:#016x}, PHYS_BUFFER = {:#016x}", dest, phys_buffer).as_str());
                             set_buffer(phys_buffer);
+
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        Ok(VcpuEmulation::Handled)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
+                                }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + BP_LEN as u64;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Handled)
+                            }
+                        },
+                        INIT_MAP => {
+                            let phys_buffer;
+                            let dest;
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                dest = regs.rdi;
+                                phys_buffer = self.kvm_vcpu.guest_virt_to_phys(dest as u64);
+                                if phys_buffer == 0 {
+                                    // Fuck it, we'll walk the page tables
+                                    match &self.kvm_vcpu.guest_memory_map {
+                                        Some(gm) => {
+                                            phys_buffer = pagewalk(gm.clone(), dest, page_table);
+                                        },
+                                        None => {
+                                            log_jaeger_warning("run_emulation", "No memory map");
+                                        }
+                                    }
+                                };
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                dest = self.kvm_vcpu.get_x0();
+                                let tcr = self.kvm_vcpu.get_tcr();
+                                let ttbr0 = self.kvm_vcpu.get_ttbr0() & !(0xfff);
+                                let ttbr1 = self.kvm_vcpu.get_ttbr1();
+                                log_jaeger_warning("run_emulation", format!("Translating {:#016x}", dest).as_str());
+                                match &self.kvm_vcpu.guest_memory_map {
+                                    Some(gm) => {
+                                        phys_buffer = pagewalk_aarch64(gm.clone(), dest, tcr, ttbr0, ttbr1);
+                                    },
+                                    None => {
+                                        phys_buffer = 0;
+                                        log_jaeger_warning("run_emulation", "No memory map");
+                                    }
+                                };
+                            }
+
+                            log_jaeger_warning("run_emulation", format!("DEST = {:#016x}, PHYS_MAP = {:#016x}", dest, phys_buffer).as_str());
+                            set_map(phys_buffer);
 
                             #[cfg(target_arch = "x86_64")]
                             {
