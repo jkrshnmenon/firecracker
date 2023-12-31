@@ -23,7 +23,7 @@ use logger::{error, info, IncMetric, METRICS,
 use oracle:: {
     BP_LEN,
     BP_BYTES,
-    INIT, INIT_COMPLETE, EXEC, EXIT, FORK, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER, SKIP, INIT_MAP,
+    INIT, INIT_COMPLETE, EXEC, EXIT, FORK, MODIFY, UNMODIFY, SNAPSHOT, FUZZ, INIT_BUFFER, SKIP, INIT_MAP, RESET,
     HANDLED, STOPPED, CRASHED,
     pagewalk,
     pagewalk_aarch64,
@@ -31,6 +31,8 @@ use oracle:: {
     handle_kvm_exit_debug,
     set_buffer,
     set_map,
+    get_map,
+    send_map,
     notify_exec,
     notify_exit,
     notify_fork,
@@ -925,6 +927,18 @@ impl Vcpu {
                                 HANDLED => Ok(VcpuEmulation::Handled),
                                 STOPPED => {
                                     // log_jaeger_warning("run_emulation", "Killing parent");
+                                    let buf = &mut [0u8; 4096];
+                                    let addr = get_map();
+                                    match &self.kvm_vcpu.guest_memory_map {
+                                        Some(gm) => {
+                                            gm.read_slice(buf, GuestAddress(addr))
+                                                .expect("Failed to read string");
+                                            send_map(buf);
+                                        },
+                                        None => {
+                                            log_jaeger_warning("run_emulation", "No memory map");
+                                        }
+                                    }
                                     unsafe {
                                         // libc::kill(getppid().into(), libc::SIGTERM);
                                         log_jaeger_warning("run_emulation", "Killing self");
@@ -934,6 +948,18 @@ impl Vcpu {
                                 },
                                 CRASHED => {
                                     // log_jaeger_warning("run_emulation", "Killing parent");
+                                    let buf = &mut [0u8; 4096];
+                                    let addr = get_map();
+                                    match &self.kvm_vcpu.guest_memory_map {
+                                        Some(gm) => {
+                                            gm.read_slice(buf, GuestAddress(addr))
+                                                .expect("Failed to read string");
+                                            send_map(buf);
+                                        },
+                                        None => {
+                                            log_jaeger_warning("run_emulation", "No memory map");
+                                        }
+                                    }
                                     unsafe {
                                         // libc::kill(getppid().into(), libc::SIGTERM);
                                         log_jaeger_warning("run_emulation", "Killing self");
@@ -1112,6 +1138,21 @@ impl Vcpu {
                                 self.kvm_vcpu.set_pc(pc);
                                 Ok(VcpuEmulation::Handled)
                             }
+                        },
+                        RESET => {
+                            let buf = &mut [0u8; 4096];
+                            let addr = get_map();
+                            match &self.kvm_vcpu.guest_memory_map {
+                                Some(gm) => {
+                                    gm.read_slice(buf, GuestAddress(addr))
+                                        .expect("Failed to read string");
+                                    send_map(buf);
+                                },
+                                None => {
+                                    log_jaeger_warning("run_emulation", "No memory map");
+                                }
+                            }
+                            Ok(VcpuEmulation::Stopped)
                         },
                         FUZZ => {
                             // This case should only be hit when the snapshot is loaded

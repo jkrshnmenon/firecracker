@@ -21,6 +21,7 @@ pub const INIT_BUFFER:u64 = 8;
 pub const FORK:u64 = 9;
 pub const SKIP:u64 = 10;
 pub const INIT_MAP: u64 = 11;
+pub const RESET: u64 = 12;
 
 pub const HANDLED:u64 = 0;
 pub const STOPPED:u64 = 1;
@@ -290,7 +291,7 @@ pub fn init_handshake() -> std::io::Result<()> {
 
 /// This function is used to inform the Oracle of a breakpoint event
 /// Oracle will let us know if this is the entrypoint
-pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64, arg: u64) -> (bool, bool, bool, bool) {
+pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64, arg: u64) -> (bool, bool, bool, bool, bool) {
     let msg = format!("{:#016x}:{:#016x}:{:#016x}:{:#016x}\n", pc_addr, phys_addr, cr3, arg);
     match send_message(&msg) {
         Ok(()) => (),
@@ -324,7 +325,14 @@ pub fn notify_oracle(pc_addr:u64, phys_addr: u64, cr3: u64, arg: u64) -> (bool, 
             false
         }
     };
-    (is_first, take_snapshot, fuzz, skip)
+    let reset: bool =  match recvline() {
+        Ok(data) => data.trim().parse::<bool>().unwrap(),
+        Err(e) => {
+            println!("Could not decode: {}", e);
+            false
+        }
+    };
+    (is_first, take_snapshot, fuzz, skip, reset)
 }
 
 
@@ -603,6 +611,56 @@ pub fn set_map(rdi: u64) {
 }
 
 
+pub fn get_map() -> u64 {
+    let value: u64 = unsafe {
+        DOJOSNOOP_MAP.clone().unwrap()
+    };
+    value
+}
+
+
+pub fn send_map(buffer: &mut [u8; 4096]) {
+    let mut values = Vec::new();
+
+    for chunk in buffer.chunks_exact(4) {
+        let value = u32::from_le_bytes(chunk.try_into().expect("Slice with incorrect length"));
+        values.push(value);
+    }
+
+    let count = values[0];
+    let end = (count+1).min(values.len() as u32) as usize;
+
+    let mut length = 0;
+    let formatted_string: String = values[1..end]
+        .iter()
+        .map(|&num| {
+            let num_str = num.to_string() + "\n";
+            length += num_str.len();
+            num_str
+        })
+        .collect();
+
+    // log_jaeger_warning("send_map", format!("COUNT = {}", count).as_str());
+    let msg = format!("MAP:{}={}\n", count, length);
+    match send_message(&msg) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+    match send_message(&formatted_string) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
+
+    // for &x in &values[1..end] {
+    //     let msg1 = format!("{}\n", x);
+    //     match send_message(&msg1) {
+    //         Ok(()) => (),
+    //         Err(e) => panic!("{}", e)
+    //     };
+    // }
+}
+
+
 pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, arg: u64) -> u64 {
     unsafe {
         if DOJOSNOOP_CR3.is_none() {
@@ -642,7 +700,7 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, arg: u64) -> u6
 
     // We've already initialized all the required variables.
     // Handle this situation properly now
-    let (_is_first, take_snapshot, fuzz, skip) = notify_oracle(rip, phys_addr, cr3, arg);
+    let (_is_first, take_snapshot, fuzz, skip, reset) = notify_oracle(rip, phys_addr, cr3, arg);
     if take_snapshot == true {
         log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
         return SNAPSHOT;
@@ -654,6 +712,10 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, arg: u64) -> u6
     if skip == true {
         log_jaeger_warning("handle_kvm_exit_debug", format!("SKIP = {:#016x}", rip).as_str());
         return SKIP;
+    }
+    if reset == true {
+        log_jaeger_warning("handle_kvm_exit_debug", format!("RESET = {:#016x}", rip).as_str());
+        return RESET;
     }
 
     // if is_first == true {
