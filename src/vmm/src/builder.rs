@@ -753,7 +753,7 @@ pub fn build_microvm_from_snapshot2(
     //     };
     // };
 
-    send_message(format!("PID={}", std::process::id()).as_str(), &mut child_stream)
+    send_message(format!("PID={}\n", std::process::id()).as_str(), &mut child_stream)
     .expect("Could not send child PID");
     log_jaeger_warning("build_microvm_from_snapshot", "Child modifying memory");
 
