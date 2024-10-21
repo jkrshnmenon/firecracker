@@ -4,6 +4,7 @@ use std::io::{
     Read, 
     Write
 };
+use std::time::Instant;
 use std::process;
 use std::env;
 use vm_memory::{GuestMemoryMmap, GuestAddress, Bytes};
@@ -33,6 +34,7 @@ const PDSHIFT: u32 = PTSHIFT + 9;
 const PDPSHIFT: u32 = PDSHIFT + 9;
 const _PGDSHIFT: u32 = PDPSHIFT + 9;
 
+const MAGIC: u64 = 0x1337;
 
 static mut DOJOSNOOP_CR3: Option<u64> = None;
 static mut DOJOSNOOP_EXEC: Option<u64> = None;
@@ -144,6 +146,8 @@ pub fn pagewalk(gm: GuestMemoryMmap, addr: u64, cr3: u64) -> u64 {
 
 /// A function for walking the page tables in aarch64
 pub fn pagewalk_aarch64(gm: GuestMemoryMmap, addr: u64, tcr: u64, ttbr0: u64, _ttbr1: u64) -> u64 {
+    // Get the current time to measure the time taken for the pagewalk
+    let start = Instant::now();
     let t0sz = tcr & 0x3F;
     let tg0 = (tcr >> 14) & 0b11;
     let epd0 = (tcr >> 6) & 1;
@@ -177,6 +181,9 @@ pub fn pagewalk_aarch64(gm: GuestMemoryMmap, addr: u64, tcr: u64, ttbr0: u64, _t
     let l3_entry = u64::from_le_bytes(*l3_value) & !(0xfff) & ((1 << 32)-1);
     // log_jaeger_warning("pagewalk_aarch64", format!("l3 index: {:016x}, entry : {:016x}", l3_index, l3_entry).as_str());
 
+    let end = Instant::now();
+    let time = end.duration_since(start);
+    log_jaeger_warning("pagewalk_aarch64", format!("Time taken: {:?}", time).as_str());
     l3_entry + page_offset as u64
 }
 
@@ -370,6 +377,14 @@ pub fn notify_exit(pid: u64, exit_code: u64) -> u64 {
     };
     // log_jaeger_warning("notify_exit", "Finished");
     ret
+}
+
+pub fn notify_snapshot() {
+    let msg = format!("SNAPSHOT\n");
+    match send_message(&msg) {
+        Ok(()) => (),
+        Err(e) => panic!("{}", e)
+    };
 }
 
 /// The Oracle will send us the physical addresses for the program
@@ -698,13 +713,19 @@ pub fn handle_kvm_exit_debug(rip: u64, phys_addr: u64, cr3: u64, arg: u64) -> u6
         }
     }
 
+    if arg == MAGIC {
+        log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
+        notify_snapshot();
+        return SNAPSHOT;
+    }
+
     // We've already initialized all the required variables.
     // Handle this situation properly now
     let (_is_first, take_snapshot, fuzz, skip, reset) = notify_oracle(rip, phys_addr, cr3, arg);
-    if take_snapshot == true {
-        log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
-        return SNAPSHOT;
-    }
+    // if take_snapshot == true {
+    //     log_jaeger_warning("handle_kvm_exit_debug", format!("SNAPSHOT = {:#016x}", rip).as_str());
+    //     return SNAPSHOT;
+    // }
     if fuzz == true {
         log_jaeger_warning("handle_kvm_exit_debug", format!("FUZZ = {:#016x}", rip).as_str());
         return FUZZ;

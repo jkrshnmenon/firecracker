@@ -803,7 +803,29 @@ impl Vcpu {
                             }
                         },
                         SNAPSHOT => {
-                            Ok(VcpuEmulation::Snapshot)
+                            /* Skip this breakpoint and continue */
+                            #[cfg(target_arch = "x86_64")]
+                            {
+                                regs.rip = regs.rip + 1;
+                                match self.kvm_vcpu.set_regs(regs) {
+                                    Ok(()) => {
+                                        Ok(VcpuEmulation::Snapshot)
+                                    },
+                                    Err(e) => {
+                                        log_jaeger_warning(
+                                            "run_emulation", 
+                                            format!("Could not set registers: {}", e).as_str()
+                                        );
+                                        Ok(VcpuEmulation::Stopped)
+                                    }
+                                }
+                            }
+                            #[cfg(target_arch = "aarch64")]
+                            {
+                                pc = pc + BP_LEN as u64;
+                                self.kvm_vcpu.set_pc(pc);
+                                Ok(VcpuEmulation::Snapshot)
+                            }
                         },
                         EXEC => {
                             /*
